@@ -1,0 +1,687 @@
+english,chinese,single_or_multiple,possible_meanings
+of,的,SINGLE,
+big,大,SINGLE,
+middle,中,SINGLE,
+one,一,SINGLE,
+person,人,SINGLE,
+son,子,SINGLE,
+day,日,SINGLE,
+mountain,山,SINGLE,
+number,数,SINGLE,
+country,国,SINGLE,
+new,新,SINGLE,
+is,是,SINGLE,
+field,田,MULTIPLE,field farm cropland 
+village,村,SINGLE,
+use,用,SINGLE,
+town,镇,SINGLE,
+not,不,SINGLE,
+study,学,MULTIPLE,study learn
+have,有,SINGLE,
+up,上,SINGLE,
+meet,会,MULTIPLE,meet gathering meeting
+small,小,SINGLE,
+walk,行,MULTIPLE,walk go travel
+three,三,SINGLE,
+city,市,SINGLE,
+king,王,SINGLE,
+year,年,SINGLE,
+birth,生,MULTIPLE,birth life grow
+become,成,MULTIPLE,become accomplish succeed
+certain,定,MULTIPLE,certain fixed settled
+individual,个,SINGLE,
+and,和,SINGLE,
+in,在,SINGLE,
+high,高,SINGLE,
+earth,地,MULTIPLE,earth ground land
+moon,月,SINGLE,
+public,公,MULTIPLE,public common impartial
+out,出,SINGLE,
+law,法,SINGLE,
+name,名,MULTIPLE,name famous renowned
+below,下,SINGLE,
+society,社,SINGLE,
+for,为,MULTIPLE,for become act as
+township,乡,SINGLE,
+river,川,SINGLE,
+character,字,SINGLE,
+sea,海,SINGLE,
+east,東,SINGLE,
+bright,明,MULTIPLE,bright clear evident
+time,时,SINGLE,
+south,南,SINGLE,
+west,西,SINGLE,  
+flat,平,MULTIPLE,flat level even
+form,式,MULTIPLE,form style pattern
+home,家,MULTIPLE,home family household
+number,第,MULTIPLE,number sequence order 
+city,城,SINGLE,
+beauty,美,SINGLE,
+thing,件,MULTIPLE,thing item article
+part,部,SINGLE,
+female,女,MULTIPLE,female woman
+spirit,神,MULTIPLE,spirit god supernatural
+by,以,MULTIPLE,by with take as
+great,太,SINGLE,
+before,前,SINGLE,
+gold,金,SINGLE,
+north,北,SINGLE,
+add,加,SINGLE,
+original,原,MULTIPLE,original primitive source
+place,置,MULTIPLE,place position locate
+peace,安,MULTIPLE,peace safe calm
+I,我,SINGLE,
+capital,京,SINGLE,
+can,可,MULTIPLE,can possibly maybe
+take,取,MULTIPLE,take get select
+county,县,SINGLE,
+two,二,SINGLE,
+reason,理,MULTIPLE,reason logic principle
+self,自,SINGLE,
+faith,信,MULTIPLE,faith trust belief
+age,代,MULTIPLE,age generation period
+require,要,MULTIPLE,require need want
+change,化,MULTIPLE,change transform turn into
+wood,木,SINGLE,  
+water,水,SINGLE,
+island,島,SINGLE,
+correct,正,MULTIPLE,correct upright proper
+inside,内,SINGLE,
+unite,合,MULTIPLE,unite combine join
+return,回,MULTIPLE,return answer reply
+NOTRANSLATE,了,SINGLE,
+place,所,SINGLE,
+matter,事,MULTIPLE,matter thing affair
+indicate,表,MULTIPLE,indicate express show
+divide,分,MULTIPLE,divide separate part
+enter,入,SINGLE,
+whole,全,MULTIPLE,whole complete entire
+path,里,MULTIPLE,path inside within
+official,郎,SINGLE,
+according to,据,SINGLE,
+province,州,SINGLE,
+person,者,SINGLE,
+connect,通,MULTIPLE,connect pass through communicate
+capital city,都,SINGLE,
+river,江,SINGLE,
+arrive,到,SINGLE,
+to,对,MULTIPLE,to correct towards
+use,使,MULTIPLE,use make cause
+world,世,MULTIPLE,world age era
+result,果,MULTIPLE,result fruit indeed
+ten,十,SINGLE,
+wisteria,藤,SINGLE,
+come,来,SINGLE,
+face,面,SINGLE,
+this,这,SINGLE,
+street,街,SINGLE,
+stone,石,SINGLE,
+able,能,MULTIPLE,able capable potential
+empty,空,MULTIPLE,empty void hollow
+martial arts,武,SINGLE,
+after,后,MULTIPLE,after back behind
+origin,元,MULTIPLE,origin primary beginning
+river,河,SINGLE,
+town,町,MULTIPLE,town village
+flower,花,SINGLE,
+type,类,MULTIPLE,type kind category
+thing,物,MULTIPLE,thing object matter
+edition,版,MULTIPLE,edition version plate
+move,动,MULTIPLE,move motion shift
+as,如,MULTIPLE,as like similar to
+real,真,MULTIPLE,real true genuine
+number,号,MULTIPLE,number issue edition
+forest,林,SINGLE,
+book,書,MULTIPLE,book written work
+people,民,MULTIPLE,people civilian folk
+mouth,口,SINGLE,
+show,示,MULTIPLE,show indicate display
+diagram,图,MULTIPLE,diagram picture map
+battle,戦,MULTIPLE,battle war fight
+plum,李,MULTIPLE,family name plum (fruit/tree)
+light,光,SINGLE,
+white,白,SINGLE,
+heart,心,MULTIPLE,heart mind core
+set,设,MULTIPLE,set establish found
+road,路,SINGLE,
+most,最,SINGLE,
+hand,手,SINGLE,
+type,型,MULTIPLE,type model pattern
+build,建,MULTIPLE,build establish found
+main,主,MULTIPLE,main master host
+gather,集,MULTIPLE,gather collect accumulate
+eye,目,MULTIPLE,eye aim goal
+degree,度,MULTIPLE,degree extent level
+long,長,SINGLE,
+star,星,SINGLE,
+five,五,SINGLE,
+heavy,重,MULTIPLE,heavy important serious
+at,于,MULTIPLE,at in to
+develop,发,MULTIPLE,develop send out issue
+history,史,SINGLE,
+national,國,SINGLE,
+you,你,SINGLE,
+station,駅,SINGLE,
+many,多,SINGLE,
+gentleman,士,MULTIPLE,gentleman scholar samurai
+four,四,SINGLE,
+company,司,MULTIPLE,company department agency
+order,次,MULTIPLE,order time instance
+stand,立,MULTIPLE,stand establish upright
+spot,点,MULTIPLE,spot point dot
+sound,音,SINGLE,
+tool,器,MULTIPLE,tool instrument utensil
+well,井,SINGLE,
+exist,存,MULTIPLE,exist remain live
+current,当,MULTIPLE,current bear undergo
+temple,寺,SINGLE,
+nature,性,MULTIPLE,nature character disposition
+also,也,SINGLE,
+position,位,MULTIPLE,position place location
+value,值,SINGLE,
+old,古,MULTIPLE,old ancient antique
+courtyard,院,MULTIPLE,courtyard institution yard
+boundary,界,MULTIPLE,boundary border limit
+language,語,SINGLE,
+love,愛,SINGLE,
+time,時,SINGLE,
+east,东,SINGLE,
+same,同,SINGLE,
+preserve,保,MULTIPLE,preserve keep maintain
+blue,青,MULTIPLE,blue green black
+body,体,SINGLE,
+pure,清,MULTIPLE,pure clear cool
+together,相,MULTIPLE,together mutually each other
+feeling,情,MULTIPLE,feeling emotion sentiment
+will,将,SINGLE,
+ethnic,族,MULTIPLE,ethnic race clan
+palace,宮,SINGLE,
+politics,政,SINGLE, 
+between,间,MULTIPLE,between among interval
+pine,松,SINGLE,
+begin,始,MULTIPLE,begin start initiate
+breathe,息,SINGLE,
+few,少,SINGLE,
+teach,教,SINGLE,
+get,获,MULTIPLE,get obtain gain
+row,列,MULTIPLE,row line rank
+open,开,MULTIPLE,open begin start
+science,科,SINGLE,
+spring,春,SINGLE,
+cure,治,MULTIPLE,cure govern manage
+lucky,吉,MULTIPLE,lucky auspicious fortunate
+terrace,台,MULTIPLE,terrace platform stand
+worker,工,MULTIPLE,worker labor work
+know,知,SINGLE,
+eight,八,SINGLE,
+field,場,MULTIPLE,field place site
+painting,画,MULTIPLE,painting picture drawing
+hundred,百,SINGLE,
+record,記,MULTIPLE,record note mark
+obtain,得,MULTIPLE,obtain gain get
+surname,氏,SINGLE,
+related,关,MULTIPLE,related important to close
+mark,标,MULTIPLE,mark sign signal
+outside,外,SINGLE,
+space,間,MULTIPLE,space room interval
+school,校,SINGLE,
+system,制,MULTIPLE,system institution organization
+strength,力,MULTIPLE,strength power force
+door,門,SINGLE,
+good,好,SINGLE,
+point,指,MULTIPLE,point indicate finger
+color,色,MULTIPLE,color tint complexion
+return,返,MULTIPLE,return go back revert
+horse,馬,SINGLE,
+plead,请,MULTIPLE,plead ask invite
+wind,風,SINGLE,
+connect,接,MULTIPLE,connect join receive
+intention,志,MULTIPLE,intention ambition will
+magic,魔,MULTIPLE,magic sorcery demon
+updated,更,MULTIPLE,updated more further
+process,程,MULTIPLE,process procedure journey
+district,郡,SINGLE,
+profit,利,MULTIPLE,profit benefit advantage
+prefecture,県,SINGLE,
+week,周,MULTIPLE,week cycle circumference
+valley,谷,SINGLE,
+incense,香,MULTIPLE,incense fragrance flavor
+period,期,MULTIPLE,period time term
+beginning,初,MULTIPLE,beginning first initial
+blessing,福,MULTIPLE,blessing happiness fortune
+fragment,片,MULTIPLE,fragment piece slice
+move,動,MULTIPLE,move motion shift
+join,参,MULTIPLE,join take part participate
+righteousness,義,MULTIPLE,righteousness justice morality
+phenomenon,象,MULTIPLE,phenomenon appearance model
+merit,功,MULTIPLE,merit achievement service
+pass,过,MULTIPLE,pass cross undergo
+emperor,皇,SINGLE,
+special,特,MULTIPLE,special exceptional particular
+long,长,SINGLE,
+english,英,SINGLE,
+it/other,其,SINGLE,
+flow,流,MULTIPLE,flow stream current
+remove,除,MULTIPLE,remove eliminate except
+eternal,永,MULTIPLE,eternal forever perpetual
+straight,直,SINGLE,
+thousand,千,SINGLE,
+pavilion,館,SINGLE,
+morning,朝,SINGLE,
+single,单,SINGLE,
+pattern,格,SINGLE,
+german,德,SINGLE,
+song,歌,SINGLE,
+advance,进,MULTIPLE,advance proceed go forward
+limit,限,SINGLE,
+husband,夫,SINGLE,
+garden,園,SINGLE,
+quantity,量,SINGLE,
+soil,土,SINGLE,
+put,放,MULTIPLE,put place keep
+code,码,SINGLE, 
+and,等,SINGLE,
+system,系,SINGLE,
+china,華,SINGLE,
+constant,常,SINGLE,
+no,否,SINGLE,
+see,見,SINGLE,
+source,源,SINGLE,
+actual,实,SINGLE,
+doctor,博,SINGLE,
+explain,解,SINGLE,
+male,男,SINGLE,
+no,無,SINGLE,
+examine,查,SINGLE,
+term,条,SINGLE,
+after,後,SINGLE,
+he,他,SINGLE,
+net,网,SINGLE,
+sun,阿,SINGLE,
+household,户,SINGLE,
+order,命,SINGLE,
+go,就,SINGLE,
+dragon,龍,SINGLE,
+monarch,君,SINGLE,
+summer,夏,SINGLE,
+words,言,SINGLE,
+first,先,SINGLE,
+classics,典,SINGLE,
+palace,府,SINGLE,
+organization,组,SINGLE,
+change,改,SINGLE,
+china,华,SINGLE,
+with,与,SINGLE,
+transfer,调,SINGLE,
+from,由,SINGLE,
+repair,修,SINGLE,
+eliminate,消,SINGLE,
+symbol,符,SINGLE,
+recording,录,SINGLE,
+already,已,SINGLE,
+sunshine,陽,SINGLE,
+contain,容,SINGLE,
+not yet,未,SINGLE,
+clan,宗,SINGLE,
+dragon,龙,SINGLE,
+raise,提,SINGLE,
+six,六,SINGLE,
+form,形,SINGLE,
+Italy,伊,SINGLE,
+fire,火,SINGLE,
+assistant,佐,SINGLE,
+result,结,SINGLE,
+nine,九,SINGLE,
+heroic,雄,SINGLE,
+and,而,SINGLE,
+Zhang,张,SINGLE,
+toward,向,SINGLE,
+choose,选,SINGLE,
+benevolence,仁,SINGLE,
+hall,堂,SINGLE,
+long time,久,SINGLE,
+justice,义,SINGLE,
+no,无,SINGLE,
+that,那,SINGLE,
+line,線,SINGLE,
+affair,务,SINGLE,
+foundation,基,SINGLE,
+attribute,属,SINGLE,
+install,配,SINGLE,
+army,軍,SINGLE,
+bay,津,SINGLE,
+complete,完,SINGLE,
+research,研,SINGLE,
+note,注,SINGLE,
+lose,失,SINGLE,
+apply,应,SINGLE,
+friend,友,SINGLE,
+chapter,章,SINGLE,
+seek,求,SINGLE,
+plural,们,SINGLE,
+model,模,SINGLE,
+need,需,SINGLE,
+electricity,電,SINGLE,
+this,此,SINGLE,
+night,夜,SINGLE,
+or,或,SINGLE,
+bridge,橋,SINGLE,
+root,根,SINGLE,
+jade,玉,SINGLE,
+exchange,交,SINGLE,
+product,品,SINGLE,
+good,良,SINGLE,
+then,则,SINGLE,
+open,開,SINGLE,
+passive,被,SINGLE,
+company,株,SINGLE,
+record,记,SINGLE,
+meeting,會,SINGLE,
+economy,经,SINGLE,
+turn,转,SINGLE,
+snowflake,崎,SINGLE,
+compare,比,SINGLE,
+make,造,SINGLE,
+without,没,SINGLE,
+present,现,SINGLE,
+seven,七,SINGLE,
+business,商,SINGLE, 
+mechanism,机,SINGLE,
+sun,阳,SINGLE,
+angle,角,SINGLE,
+station,站,SINGLE,
+and,及,SINGLE,
+technique,術,SINGLE,
+recognize,认,SINGLE,
+create,创,SINGLE,
+edit,編,SINGLE,
+transmit,伝,SINGLE,
+hill,岡,SINGLE,
+harbor,港,SINGLE,
+duty,任,SINGLE,
+log in,登,SINGLE,
+spread,布,SINGLE,
+investigate,究,SINGLE,
+emperor,帝,SINGLE,
+secret,密,SINGLE,
+change,变,SINGLE,
+sequence,序,SINGLE,
+calculation,计,SINGLE,
+tune,曲,SINGLE,
+pass down,传,SINGLE,
+pack,包,SINGLE,
+idea,意,SINGLE,
+go,去,SINGLE,
+sand,沙,SINGLE,
+write,写,SINGLE,
+surpass,超,SINGLE,
+today,今,SINGLE,
+forest,森,SINGLE,
+yellow,黄,SINGLE,
+scenery,景,SINGLE,
+lake,湖,SINGLE,  
+why,何,SINGLE,
+universe,宇,SINGLE,
+Zhang,張,SINGLE,
+language,语,SINGLE,
+old,老,SINGLE,
+example,例,SINGLE,
+iron,鉄,SINGLE,
+conquer,克,SINGLE,
+so,然,SINGLE,
+report,報,SINGLE,
+clothes,服,SINGLE,
+think,想,SINGLE,
+practice,実,SINGLE,
+load,载,SINGLE,
+wave,波,SINGLE,
+horse,马,SINGLE,
+state,状,SINGLE,
+line,线,SINGLE,
+ocean,洋,SINGLE,
+ten thousand,万,SINGLE,
+add,添,SINGLE,
+ball,球,SINGLE,
+machine,機,SINGLE,
+support,支,SINGLE,
+display,显,SINGLE,
+pull,拉,SINGLE,
+send,送,SINGLE,
+team,隊,SINGLE,
+place,处,SINGLE,
+teacher,師,SINGLE,
+image,像,SINGLE,
+black,黒,SINGLE,
+only,只,SINGLE,
+start,起,SINGLE,
+section,段,SINGLE,
+district,區,SINGLE,
+choose,選,SINGLE,
+business,業,SINGLE,
+calculate,算,SINGLE,
+breadth,广,SINGLE,
+view,视,SINGLE,
+autumn,秋,SINGLE,
+cause,因,SINGLE,
+output,输,SINGLE,
+health,康,SINGLE,
+thought,思,SINGLE,
+die,死,SINGLE,
+holy,聖,SINGLE,
+head,头,SINGLE,
+car,車,SINGLE,
+press,按,SINGLE,
+dream,夢,SINGLE,
+chinese,汉,SINGLE,
+from,从,SINGLE,
+topic,题,SINGLE,
+exhibit,展,SINGLE,
+province,省,SINGLE,
+leaf,葉,SINGLE,
+plain,素,SINGLE,
+related,関,SINGLE,
+page,页,SINGLE,
+together,共,SINGLE,
+stay,宿,SINGLE,
+manner,态,SINGLE,
+skill,技,SINGLE,
+pleasure,乐,SINGLE,
+control,控,SINGLE,
+move,移,SINGLE,
+影响,影,SINGLE,
+manage,管,SINGLE,
+door,戸,SINGLE,
+function,函,SINGLE,
+tail,尾,SINGLE,
+field,场,SINGLE,
+introduce,介,SINGLE,
+cultivate,育,SINGLE,
+spring,泉,SINGLE,
+say,说,SINGLE,
+change,换,SINGLE,
+must,必,SINGLE,
+chronicle,紀,SINGLE,
+treasure,宝,SINGLE,
+spirit,気,SINGLE,
+door,门,SINGLE,
+order,令,SINGLE,
+left,左,SINGLE,
+chinese,漢,SINGLE,
+if,若,SINGLE,
+house,屋,SINGLE,
+bureau,局,SINGLE,
+hit,打,SINGLE,
+issue,発,SINGLE,
+ask,问,SINGLE,
+romance,恋,SINGLE,
+soldier,兵,SINGLE,
+other,別,SINGLE,
+and,并,SINGLE,
+section,节,SINGLE,
+lead,引,SINGLE,
+all,统,SINGLE,
+wisdom,智,SINGLE,
+electricity,电,SINGLE,
+red,赤,SINGLE,
+break,断,SINGLE,
+body,身,SINGLE,
+head,首,SINGLE,
+pay,付,SINGLE,
+connect,連,SINGLE,
+official,官,SINGLE,
+hold,持,SINGLE,
+royal,御,SINGLE,
+related,親,SINGLE,
+library,库,SINGLE,
+elegant,秀,SINGLE,
+address,址,SINGLE,
+guard,守,SINGLE,
+live,活,SINGLE,
+store,藏,SINGLE,
+bamboo,竹,SINGLE,
+grass,草,SINGLE,
+tie,結,SINGLE,
+prosperous,昌,SINGLE,
+tree,樹,SINGLE,
+victory,勝,SINGLE,
+foot,足,SINGLE,
+navigation,航,SINGLE,
+Chen,陳,SINGLE,
+business,业,SINGLE,
+rich,富,SINGLE,
+snow,雪,SINGLE,
+again,再,SINGLE,
+silent,默,SINGLE,
+music,楽,SINGLE,
+valley,沢,SINGLE,
+thorn,羅,SINGLE,
+loyal,忠,SINGLE,
+error,错,SINGLE,
+bridge,桥,SINGLE,
+cloud,雲,SINGLE,
+that,该,SINGLE,
+rock,岩,SINGLE,
+specialty,专,SINGLE,
+cut,切,SINGLE,
+store,店,SINGLE,
+Zhu,朱,SINGLE,
+luck,幸,SINGLE,
+mother,母,SINGLE,
+string,串,SINGLE,
+hit,击,SINGLE,
+set,設,SINGLE,
+economic,經,SINGLE,
+seat,座,SINGLE,
+cloud,云,SINGLE,
+tell,告,SINGLE,
+change,変,SINGLE,
+test,试,SINGLE,
+high,隆,SINGLE,
+judge,判,SINGLE,
+Liu,劉,SINGLE,
+compile,编,SINGLE,
+reach,达,SINGLE,
+right,右,SINGLE,
+return,复,SINGLE,
+see,看,SINGLE,
+words,話,SINGLE,
+slope,坂,SINGLE,
+that,尔,SINGLE,
+guard,衛,SINGLE,
+pill,丸,SINGLE,
+type,样,SINGLE,
+ghost,鬼,SINGLE,
+happy,喜,SINGLE,
+Scott,斯,SINGLE,
+silver,銀,SINGLE,
+group,群,SINGLE,
+near,近,SINGLE,
+tower,塔,SINGLE,
+certain,确,SINGLE,
+index,索,SINGLE,
+not,非,SINGLE,
+hope,望,SINGLE,
+hope,希,SINGLE,
+first,甲,SINGLE,
+cross,越,SINGLE,
+bird,鳥,SINGLE,
+hemp,麻,SINGLE,
+elegant,雅,SINGLE,
+fist,拳,SINGLE,
+stream,溪,SINGLE,
+measure,测,SINGLE,
+words,话,SINGLE,
+pond,池,SINGLE,
+vegetable,菜,SINGLE,
+food,食,SINGLE,
+cross,渡,SINGLE,
+speed,速,SINGLE,
+Chen,陈,SINGLE,
+health,健,SINGLE,
+army,军,SINGLE,
+village,庄,SINGLE,
+red,红,SINGLE,
+theory,論,SINGLE,
+filial piety,孝,SINGLE,
+head,頭,SINGLE,
+fly,飛,SINGLE,
+NOTRANSLATE,么,SINGLE,
+reach,達,SINGLE,
+bar,巴,SINGLE,
+cave,洞,SINGLE,
+expensive,貴,SINGLE,
+project,项,SINGLE,
+kind,种,SINGLE,
+run,运,SINGLE,
+Genghis,彦,SINGLE,
+book,书,SINGLE,
+structure,构,SINGLE,
+rice,米,SINGLE,
+connect,连,SINGLE,
+operate,操,SINGLE,
+dress,装,SINGLE,
+opposite,反,SINGLE,
+provisional,仮,SINGLE,
+staff,员,SINGLE,
+Showa era,昭,SINGLE,
+interest,兴,SINGLE,
+guest,客,SINGLE,
+delete,删,SINGLE,
+reside,居,SINGLE,
+present,現,SINGLE,
+help,助,SINGLE,
+rapids,瀬,SINGLE,
+tiny,微,SINGLE,
+dance,舞,SINGLE,
+guide,导,SINGLE,
+effect,效,SINGLE,
+deep,深,SINGLE,
+plum,梅,SINGLE,
+material,料,SINGLE,
+every,每,SINGLE,
+continent,洲,SINGLE,
+tea,茶,SINGLE,
+defeat,败,SINGLE,
+some,些,SINGLE,
+pair,双,SINGLE,
+admirable,嘉,SINGLE,
+advance,進,SINGLE,
+tale,故,SINGLE,
+plan,計,SINGLE,
+distant,遠,SINGLE,
+candidate,候,SINGLE,
+room,房,SINGLE,
+two,两,SINGLE,
+talent,才,SINGLE,
+stop,止,SINGLE,
+number,番,SINGLE,
+strange,奇,SINGLE,
+strange,怪,SINGLE,
+unite,联,SINGLE,
+Thai,泰,SINGLE,
+border,边,SINGLE,
+still,还,SINGLE,
+yellow,黃,SINGLE,
+receive,收,SINGLE,
+spread,弘,SINGLE,
+give,给,SINGLE,

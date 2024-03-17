@@ -58,6 +58,34 @@ def process_axis(ax, ylabel_font=13, xlabel_font=13):
     #ax.set_xlabel(xlabel, fontsize=xlabel_font)
 
 def plot_ci(ax, data, label, color='blue', linestyle='-', tik_step=10, method='gaussian', do_lines=True, plt_params=plt_params):
+    """
+    Plots the mean of the data with a confidence interval (CI) envelope on the specified axes.
+
+    This function allows for the visualization of uncertainty around the mean estimate of the provided data
+    using three different methods to calculate the confidence interval: Gaussian, non-parametric (np), and bootstrap.
+
+    Parameters:
+    - ax (matplotlib.axes.Axes): The matplotlib Axes object where the data will be plotted.
+    - data (numpy.ndarray): The dataset for which the mean and confidence interval are to be calculated and plotted. 
+      The dataset should be in the form of a 2D array where rows represent different observations/trials and 
+      columns represent sequential data points or time steps.
+    - label (str): The label for the data series to be used in the plot legend.
+    - color (str, optional): The color of the plot line and confidence interval shading. Default is 'blue'.
+    - linestyle (str, optional): The linestyle of the plot line. Default is '-' (solid line).
+    - tik_step (int, optional): The interval between x-axis tick marks. Default is 10.
+    - method (str, optional): The method used to calculate the confidence interval. Options are 'gaussian' for 
+      assuming a normal distribution, 'np' for a non-parametric approach using quantiles, and 'bootstrap' for 
+      using bootstrapping to estimate the CI. Default is 'gaussian'.
+    - do_lines (bool, optional): If True, vertical dashed lines will be added at each x-axis tick mark for 
+      better readability. Default is True.
+    - plt_params (dict, optional): Additional plotting parameters to be passed to the ax.plot function call.
+
+    Raises:
+    - ValueError: If an unsupported method is specified.
+
+    Note: The 'process_axis' function called at the end is not defined within this docstring. It should be 
+    defined elsewhere to process the axis labels, ticks, and other properties.
+    """
     if do_lines:
         upper = max(round(data.shape[1]/10)*10+1, data.shape[1]+1)
         ax.set_xticks(np.arange(0, upper, tik_step))

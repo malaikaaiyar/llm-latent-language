@@ -1,0 +1,283 @@
+chinese,score,english,other_english,notes,english_truth,english_guess,probability
+会,2,meet,can meeting understand society association,,meet,▁meeting,0.2653864622116089
+成,2,accomplish,become succeed turn into one tenth,,become,▁success,0.1825313568115234
+下,4,down,below descend next,,below,▁down,0.3768402934074402
+社,5,company,,,society,▁society,0.7939225435256958
+为,1,NOTRANSLATE,,to be to do to act as for,for,▁to,0.5674600005149841
+海,4,ocean,sea,,sea,▁sea,0.7629839777946472
+美,4,beautiful,pretty USA,,beauty,▁beauty,0.6316776275634766
+部,2,section,part division ministry class,,part,▁part,0.1295305639505386
+女,5,female,,,woman,▁woman,0.7106723785400391
+安,3,safe,peaceful quiet content,,peace,▁peace,0.5311864614486694
+信,2,believe,trust letter message,,faith,▁faith,0.389680802822113
+要,1,NOTRANSLATE,,to want important also used for future actions,need,▁need,0.3342498242855072
+木,5,wood,,,wood,▁tree,0.5914131999015808
+正,2,correct,right justice positive first month,,correct,▁right,0.2745378613471985
+所,1,NOTRANSLATE,,place institute nominalization particle,place,▁here,0.1574992686510086
+事,3,matter,thing event accident,,thing,▁thing,0.2528292238712311
+分,2,divide,minute part duty,,divide,▁division,0.2502259314060211
+全,4,all,entire whole complete,,whole,▁all,0.2818448841571808
+到,1,NOTRANSLATE,,to arrive,arrive,▁to,0.4165068566799164
+世,3,generation,world life society,,world,▁world,0.677992582321167
+藤,5,wisteria,,,vine,▁v,0.5251444578170776
+来,1,NOTRANSLATE,,to come,come,▁come,0.3695623576641083
+这,1,NOTRANSLATE,,this these,this,▁this,0.7393051385879517
+能,3,ability,can energy,,able,▁can,0.3379698693752289
+武,4,military,martial,,military,▁war,0.5329154133796692
+版,5,edition,,,version,▁version,0.2545320689678192
+动,2,move,act change,,move,▁movement,0.1769410520792007
+如,1,NOTRANSLATE,,as if like for example,as,▁as,0.2708906829357147
+真,4,true,real genuine,,real,▁truth,0.3299698531627655
+设,4,set up,establish assume,,set,▁setting,0.246341124176979
+最,1,NOTRANSLATE,,most very -est,most,▁best,0.3399620354175567
+集,2,collect,assemble gather meet,,gather,▁gather,0.4537232220172882
+于,1,NOTRANSLATE,,in at to than for,at,▁at,0.2649051547050476
+多,1,NOTRANSLATE,,many much,many,▁many,0.6306737065315247
+点,2,point,dot spot a little decimal,,dot,▁dot,0.6745888590812683
+器,3,utensil,instrument,,tool,▁tool,0.2504807114601135
+性,4,nature,sex gender,,sex,▁sex,0.4236839413642883
+也,1,NOTRANSLATE,,also too,also,▁and,0.3419587016105652
+值,3,value,price worth,,value,▁worth,0.2599396705627441
+保,2,preserve,protect guarantee insure,,protect,▁protect,0.1850776970386505
+将,2,leader,commander general do,,will,▁to,0.3642662763595581
+族,4,family,clan race tribe,,tribe,▁tribe,0.3734251260757446
+宮,4,shrine,palace,,palace,▁palace,0.647650957107544
+松,5,pine,,,pine,▁p,0.9651249051094056
+始,3,begin,start,,begin,▁beginning,0.2450646460056305
+科,2,subject,department section branch,,science,▁science,0.7438592314720154
+吉,4,lucky,auspicious propitious,,lucky,▁luck,0.3447205126285553
+工,5,labor,,,work,▁work,0.4776298999786377
+画,2,draw,paint picture,,painting,▁painting,0.4476331770420074
+得,1,NOTRANSLATE,,to get to have to be able to,get,▁get,0.2335610538721084
+氏,4,family name,clan,,surname,▁surname,0.3476828634738922
+标,4,symbol,mark sign seal,,mark,▁mark,0.1150527745485305
+間,4,interval,space between,,space,▁space,0.2482485324144363
+魔,4,demon,devil magic,,magic,▁magic,0.3604976534843445
+更,1,NOTRANSLATE,,more further re- again,more,▁more,0.3024785220623016
+程,3,procedure,rule,,process,▁river,0.0525409057736396
+利,2,sharp,profit advantage,,profit,▁benefit,0.1641090959310531
+県,5,prefecture,,,prefecture,▁pre,0.3238968253135681
+周,2,circumference,circuit week,,week,▁week,0.5915481448173523
+香,4,fragrant,incense,,fragrant,▁fra,0.6449591517448425
+片,3,slice,sheet,,piece,▁piece,0.181761622428894
+功,2,achievement,merit work,,merit,▁virtue,0.1215594708919525
+过,4,pass,cross go through,,pass,▁over,0.1871826946735382
+皇,3,emperor,royal,,emperor,▁em,0.8052130937576294
+英,4,England,English hero,,English,▁English,0.4909130334854126
+永,4,forever,permanence,,eternal,▁et,0.6589632034301758
+朝,2,dynasty,morning,,morning,▁morning,0.4170033931732178
+量,2,quantity,amount measure,,quantity,▁measure,0.244703859090805
+土,5,soil,,,earth,▁earth,0.7283080816268921
+码,4,yard,number,,code,▁code,0.5162822008132935
+常,2,usual,common ordinary,,often,▁always,0.1493285000324249
+源,4,source,origin,,source,▁spring,0.4768585860729217
+实,5,real,,,actual,▁fact,0.1391694545745849
+男,5,male,,,man,▁man,0.7104514241218567
+查,4,investigate,examine,,check,▁search,0.1870772987604141
+条,3,clause,strip item strip,,strip,▁line,0.4579969048500061
+户,4,door,household,,household,▁house,0.2976505756378174
+君,4,monarch,ruler gentlemen,,monarch,▁king,0.2462814748287201
+典,4,classic,law ceremony canon,,classic,▁dictionary,0.1074952408671379
+组,4,organize,group,,organization,▁group,0.5124436020851135
+与,1,NOTRANSLATE,,and with to give participate,with,▁and,0.2917796075344085
+调,2,tune,tone adjust investigate,,transfer,▁adjust,0.1216833814978599
+修,2,repair,study cultivate,,repair,▁to,0.2075856178998947
+消,2,vanish,eliminate extinguish spend news,,eliminate,▁disappear,0.1236654296517372
+录,4,record,copy,,recording,▁record,0.6076340079307556
+已,1,NOTRANSLATE,,already stop,already,▁already,0.1844722926616668
+陽,4,positive,male sun,,sunshine,▁sun,0.8425496220588684
+容,4,appearance,form contain,,contain,▁container,0.2972701787948608
+未,1,NOTRANSLATE,,not yet,not yet,▁not,0.4326897859573364
+龙,5,dragon,,,dragon,▁drag,0.9164670705795288
+提,2,carry,raise propose,,raise,▁raise,0.0754787847399711
+伊,5,Italy,,,Italy,▁I,0.2175803780555725
+雄,5,male,,,heroic,▁male,0.6291964054107666
+张,3,stretch,extend sheet,,Zhang,▁Z,0.1220267936587333
+向,1,NOTRANSLATE,,towards to face,toward,▁to,0.2914635241031647
+选,4,select,elect,,choose,▁choose,0.4122180640697479
+仁,4,benevolence,humanity,,benevolence,▁virtue,0.1486655920743942
+久,4,long time,old,,long time,▁long,0.7294933795928955
+义,3,justice,righteousness duty,,justice,▁virtue,0.1239645704627037
+无,1,NOTRANSLATE,,not have none,none,▁none,0.2700428664684295
+那,1,NOTRANSLATE,,that which,that,▁that,0.4046743214130401
+务,4,business,affair duty,,affair,▁duty,0.4731286466121673
+基,3,base,foundation basic,,foundation,▁foundation,0.1462366580963134
+属,2,belong to,category nature,,attribute,▁belong,0.1122403815388679
+配,2,join,mix match,,install,▁to,0.0646635368466377
+津,4,ferry,haven port,,bay,▁river,0.2257090508937835
+完,4,complete,whole finish,,complete,▁finish,0.4175685346126556
+研,4,grind,study research,,research,▁study,0.3465179204940796
+注,2,pour,concentrate notes,,note,▁note,0.1692546159029007
+应,2,answer,respond should,,apply,▁should,0.2968898415565491
+章,3,chapter,section badge,,chapter,▁poem,0.2060233056545257
+求,2,seek,request demand,,seek,▁to,0.2412558794021606
+们,1,NOTRANSLATE,,plural marker for pronouns,plural,▁people,0.0724898502230644
+模,4,imitate,model norm,,model,▁model,0.549955427646637
+或,1,NOTRANSLATE,,or maybe perhaps,or,▁or,0.6705144643783569
+玉,5,jade,,,jade,▁j,0.8430741429328918
+交,2,goods,commodity article hand over friend,,exchange,▁exchange,0.1890898197889328
+则,1,NOTRANSLATE,,norm principle rule,then,▁then,0.1430863291025161
+被,1,NOTRANSLATE,,by indicate passive,passive,▁to,0.2060926705598831
+會,2,can,meeting understand society association,,meeting,▁to,0.2984582781791687
+经,2,pass through,scripture warp (weaving) manage,,economy,▁way,0.0319969244301319
+比,1,NOTRANSLATE,,compare,compare,▁compare,0.134171187877655
+造,2,make,build create,,make,▁to,0.2851289212703705
+没,1,NOTRANSLATE,,not sink drown,without,▁not,0.1525852233171463
+现,4,appear,now,,present,▁present,0.4694341421127319
+机,2,machine,opportunity,,mechanism,▁machine,0.583400309085846
+阳,4,positive,male sun,,sun,▁sun,0.8378945589065552
+角,2,angle,corner role,,angle,▁corner,0.2568584978580475
+站,2,stand,station,,station,▁station,0.3540960252285003
+術,2,art,skill,,technique,▁art,0.2950775623321533
+认,3,recognize,know acknowledge,,recognize,▁know,0.2372168451547622
+创,4,begin,create initiate,,create,▁create,0.4841747879981994
+編,3,knit,compile,,edit,▁thread,0.0945568159222602
+伝,4,transmit,convey hand down,,transmit,▁legend,0.2136842757463455
+港,4,harbor,port,,harbor,▁har,0.6362821459770203
+任,2,appoint,trust duty,,duty,▁duty,0.2048876583576202
+登,3,ascend,register record,,climb,▁clim,0.3790823519229889
+布,3,cotton,linen announce,,spread,▁cloth,0.6291393637657166
+究,4,research,study,,investigate,▁ult,0.102640300989151
+密,2,dense,intimate secret,,secret,▁secret,0.5244457125663757
+序,4,order,sequence preface,,sequence,▁pre,0.2030922472476959
+计,2,plan,compute,,calculate,▁to,0.107963427901268
+曲,2,tune,bend song,,song,▁song,0.4367986023426056
+包,2,wrap,pack bun,,pack,▁bag,0.223179742693901
+意,2,idea,meaning thought,,idea,▁meaning,0.254877507686615
+去,2,go,leave remove,,go,▁to,0.3400272727012634
+超,2,super-,ultra- surpass,,surpass,▁super,0.3738694489002228
+今,3,now,modern,,today,▁today,0.6406357884407043
+景,2,scene,view situation,,scenery,▁scen,0.644369900226593
+何,1,NOTRANSLATE,,what how why which,why,▁what,0.3050616681575775
+宇,4,eaves,universe,,universe,▁universe,0.5283575654029846
+然,1,NOTRANSLATE,,but yes -like -ish,so,▁so,0.2250977307558059
+報,5,report,,,report,▁news,0.2863067388534546
+想,2,think,wish idea,,think,▁want,0.213736891746521
+载,4,carry,load transport,,load,▁to,0.1989784687757492
+万,5,ten thousand,,,ten thousand,▁ten,0.5868685841560364
+球,5,sphere,,ball,ball,▁ball,0.8500316739082336
+支,2,branch,support sustain,,support,▁branch,0.1910913735628128
+显,4,appear,manifest,,display,▁show,0.2035235315561294
+隊,5,party,,team,team,▁team,0.5516244173049927
+師,3,master,teacher expert,,teacher,▁teacher,0.431275337934494
+像,3,likeness,image figure,,image,▁like,0.2934321463108063
+只,1,NOTRANSLATE,,only merely,only,▁only,0.7577494382858276
+起,2,rise,raise begin,,start,▁rise,0.1616366654634475
+段,3,paragraph,section grade,,section,▁step,0.3647691905498504
+算,3,calculate,figure plan,,calculate,▁to,0.197034552693367
+广,4,wide,extensive,,breadth,▁wide,0.5832547545433044
+视,4,look,inspect,,view,▁sight,0.3517500162124634
+秋,5,autumn,,,autumn,▁aut,0.8700944185256958
+因,1,NOTRANSLATE,,cause reason,cause,▁because,0.5118165612220764
+输,3,transport,lose,,output,▁to,0.0958578363060951
+思,3,think,consider,,thought,▁thought,0.5629615187644958
+死,4,die,death,,die,▁death,0.6234812140464783
+聖,4,holy,sage,,holy,▁saint,0.5677739977836609
+从,1,NOTRANSLATE,,from obey,from,▁from,0.5292081832885742
+题,2,topic,subject problem,,topic,▁question,0.2799488604068756
+展,3,expand,develop unfold,,exhibit,▁exhibition,0.1804990917444229
+素,3,plain,element essence,,plain,▁simple,0.1267504543066024
+宿,3,lodge,old,,stay,▁inn,0.4223436117172241
+态,4,attitude,appearance,,manner,▁m,0.1634065508842468
+乐,2,music,happy,,pleasure,▁music,0.2785779535770416
+函,2,box,letter,,function,▁function,0.1714153587818145
+介,3,introduce,mediate,,between,▁bridge,0.023498872295022
+育,4,raise,bring up educate,,cultivate,▁to,0.2562358677387237
+说,1,NOTRANSLATE,,speak say theory,say,▁to,0.3385699391365051
+必,1,NOTRANSLATE,,certainly must,must,▁must,0.6313794255256653
+紀,4,discipline,age,,chronicle,▁record,0.2457171976566314
+宝,3,treasure,precious,,treasure,▁tre,0.8634429574012756
+门,2,gate,door school sect,,door,▁door,0.8341834545135498
+若,1,NOTRANSLATE,,if like as,if,▁young,0.4765609502792358
+局,3,bureau,office counter,,bureau,▁game,0.1196525171399116
+発,2,departure,discharge hair,,issue,▁to,0.1030389890074729
+问,2,ask,question problem,,ask,▁question,0.4728420078754425
+恋,4,love,romance,,romance,▁love,0.8568718433380127
+別,2,separate,another,,other,▁different,0.1629617065191269
+引,2,pull,lead quote,,lead,▁pull,0.2271703779697418
+统,2,unite,command govern,,all,▁general,0.0883584842085838
+电,2,electricity,lightning,,electricity,▁electric,0.7777867913246155
+断,2,cut off,decide judge,,break,▁break,0.3852967023849487
+御,3,honorable,ride,,royal,▁god,0.1548118740320205
+库,4,warehouse,storehouse,,library,▁store,0.0853788927197456
+址,3,ruins,historic site,,address,▁address,0.385431170463562
+守,2,defend,obey observe,,guard,▁guard,0.227254644036293
+活,2,live,lively,,live,▁alive,0.1464882344007492
+竹,5,bamboo,,,bamboo,▁b,0.9628600478172302
+結,2,tie,bind contract marry,,tie,▁end,0.0986241102218627
+昌,4,prosperous,bright,,prosperous,▁prosper,0.2045342475175857
+樹,5,timber,,,tree,▁tree,0.9284814596176147
+勝,2,win,excel,,victory,▁victory,0.6852043867111206
+航,4,sail,navigate,,navigation,▁air,0.104457288980484
+陳,4,exhibit,state,,Chen,▁Chen,0.2087069153785705
+富,2,rich,abundant,,rich,▁wealth,0.4567684233188629
+再,1,NOTRANSLATE,,again twice more,again,▁again,0.7101972699165344
+默,4,silent,quiet,,silent,▁silence,0.4091151654720306
+楽,3,music,comfort easy,,music,▁joy,0.2685888111591339
+羅,3,silk,gather,,thorn,▁river,0.0822832509875297
+错,4,mistake,bed,,error,▁mistake,0.6242303848266602
+专,3,special,specialized expert,,specialty,▁special,0.3577831983566284
+店,4,store,shop,,store,▁shop,0.64589923620224
+朱,5,cinnabar,,vermilion,Zhu,▁red,0.4745279252529144
+幸,3,happiness,luck,,luck,▁happiness,0.4059350490570068
+串,3,string together,skewer,,string,▁string,0.4381816387176513
+經,4,sutra,,pass through manage warp classic,economic,▁experience,0.0493468903005123
+云,2,say,cloud,,cloud,▁cloud,0.7554450035095215
+告,2,tell,announce accuse,,tell,▁to,0.2941567897796631
+试,3,test,try examine,,test,▁try,0.4645193517208099
+劉,5,Liú,,Chinese surname,Liu,▁Li,0.6843237280845642
+编,2,knit,weave plait,,compile,▁edit,0.1402024030685424
+达,2,reach,arrive inform,,reach,▁to,0.2358373254537582
+看,2,look,see watch,,see,▁to,0.3275798857212066
+丸,5,round,,,pill,▁round,0.4027071893215179
+鬼,4,ghost,spirit,,ghost,▁g,0.8391784429550171
+喜,3,rejoice,take pleasure in,,happy,▁joy,0.2823228538036346
+斯,4,this,thus,,Scott,▁S,0.0279693324118852
+索,3,search,inquire demand,,index,▁ro,0.1655482351779937
+越,2,go beyond,exceed,,cross,▁over,0.0870412290096283
+麻,5,hemp,,,hemp,▁h,0.2281430959701538
+雅,4,elegant,graceful,,elegant,▁grace,0.2271714955568313
+拳,4,fist,boxing,,fist,▁f,0.8240588903427124
+测,4,fathom,survey,,measure,▁measure,0.4137447476387024
+话,2,talk,speak,,word,▁talk,0.3670845329761505
+池,5,pond,,,pond,▁p,0.806736409664154
+菜,4,dish,vegetable,,vegetable,▁veget,0.7832229137420654
+食,2,eat,drink feed,,food,▁food,0.4436321258544922
+速,4,fast,quick,,speed,▁speed,0.6636279821395874
+健,4,healthy,strong,,health,▁health,0.7890010476112366
+論,3,argue,discuss theory,,theory,▁discussion,0.1338336914777755
+孝,4,filial piety,obedience,,filial piety,▁fil,0.8092665076255798
+巴,3,cling,palm tree,,bar,▁bar,0.1889037191867828
+貴,4,expensive,,,expensive,▁pre,0.1583287119865417
+项,3,back of neck,item term,,project,▁branch,0.1379031240940094
+种,2,species,seed plant cultivate race,,kind,▁plant,0.338174819946289
+运,3,transport,carry luck destiny fortune,,run,▁run,0.0856118351221084
+构,3,construct,frame,,structure,▁to,0.112486608326435
+操,2,manage,operate exercise,,operate,▁to,0.0741620138287544
+反,3,reverse,opposite anti-,,opposite,▁mirror,0.1416589170694351
+仮,3,provisional,temporary,,provisional,▁temporary,0.1693832725286483
+员,3,employee,member,,staff,▁soldier,0.1909571141004562
+昭,4,shine,display,,bright,▁bright,0.2197960764169693
+兴,3,rise,flourish interest,,interest,▁joy,0.1343747824430465
+居,4,reside,live,,reside,▁live,0.2686730623245239
+瀬,5,shallows,,rapids,rapids,▁river,0.2274808883666992
+微,3,micro,delicate,,tiny,▁small,0.1705421656370163
+导,4,guide,lead conduct,,guide,▁lead,0.3056618571281433
+梅,5,plum,,,plum,▁pl,0.7610055208206177
+料,3,material,quantity expect conjecture,,material,▁reci,0.065424807369709
+每,1,NOTRANSLATE,,every,every,▁every,0.5467050671577454
+洲,4,continent,island sandbar,,continent,▁sea,0.3147174119949341
+败,3,be defeated,fail,,defeat,▁lose,0.3940507769584656
+些,1,NOTRANSLATE,,some,some,▁some,0.3247087895870209
+嘉,4,excellent,auspicious praise,,admirable,▁joy,0.1050532609224319
+故,2,old,cause reason,,tale,▁past,0.1050730943679809
+計,2,plan,scheme measure,,plan,▁measure,0.1336606740951538
+遠,3,far,distant,,distant,▁far,0.6736958026885986
+候,2,climate,season wait,,candidate,▁season,0.111469455063343
+房,3,house,room,,room,▁house,0.6469878554344177
+才,1,NOTRANSLATE,,talent just not until,talent,▁talent,0.5129666924476624
+泰,4,peaceful,safe,,Thai,▁Th,0.3412970006465912
+边,3,edge,side brink,,border,▁edge,0.4840573966503143
+还,1,NOTRANSLATE,,still return repay,still,▁return,0.1362830698490142
+收,2,receive,accept collect,,receive,▁har,0.1582263261079788
+给,1,NOTRANSLATE,,givek,give,▁to,0.5276095867156982
