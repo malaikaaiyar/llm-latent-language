@@ -30,11 +30,16 @@ cfg.model_kwargs = {'use_fast': False, 'add_prefix_space': False}
 tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, **cfg.model_kwargs) 
 df = pd.read_csv('data/test/opus.csv')
 df = df[df['chinese'].isin(tokenizer.get_vocab())]
+df.to_csv('data/test/opus_llama.csv', index=False)
+# %%
 
 
 df_llama = pd.read_csv('data/test/converted_results.csv')
 merged_df = pd.merge(df, df_llama, on='chinese', how='inner')
-filtered_df = merged_df[~((merged_df['english'] == merged_df['english_truth']) & (merged_df['english_truth'].str.contains(merged_df['english_guess'].str[1:])))]
+filtered_df = merged_df[~((merged_df['english'] == merged_df['english_truth']) & (merged_df['english_guess'].str[:1].isin(merged_df['english_truth'])))]
 print(filtered_df)
-filtered_df.to_csv('data/test/filtered_results.csv', index=False)
+
+# %%
+duplicated_df = merged_df[merged_df['chinese'].duplicated(keep=False)]
+print(duplicated_df)
 # %%
