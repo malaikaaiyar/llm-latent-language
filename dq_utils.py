@@ -41,6 +41,17 @@ def is_chinese_char(ch):
 
 
 def plot_ci(data, ax, **kwargs):
+    """
+    Plots the mean and confidence interval of the given data on the specified axis.
+
+    Parameters:
+    - data: A tensor or array-like object containing the data.
+    - ax: The axis object on which to plot the data.
+    - **kwargs: Additional keyword arguments to be passed to the plot function.
+
+    Returns:
+    None
+    """
     mean = data.mean(dim=1)
     std = data.std(dim=1)
     sem95 = 1.96 * std / (len(data)**0.5) 
