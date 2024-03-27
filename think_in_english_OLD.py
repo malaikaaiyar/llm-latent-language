@@ -120,44 +120,7 @@ import seaborn as sns
 import torch
 
 
-font = FontProperties(fname='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')  # Specify the path to your font file
-def logit_lens(prompt, model, tokenizer, ax, k=10):
-    # Assuming model.cfg.n_layers and k are defined in your context
-    n_layers = model.cfg.n_layers
-    heatmap = torch.zeros(n_layers, k)
-    token_names_matrix = []
 
-
-    output, cache = model.run_with_cache(prompt)
-    
-    most_likely_tokens = []
-    
-    for j in range(n_layers):
-        resid = cache[f'blocks.{j}.hook_resid_post']
-        ln_resid = model.ln_final(resid)
-        logits = model.unembed(ln_resid)
-        probs = torch.softmax(logits[0, -1, :], dim=-1).cpu()
-        top_probs, top_tok = torch.topk(probs, k)
-        heatmap[j] = top_probs
-        token_names = tokenizer.convert_ids_to_tokens(top_tok)
-        token_names_matrix.append(token_names)
-
-        most_likely_tokens.append(token_names[0])
-
-    # Plotting the heatmap
-    plt.figure(figsize=(k, n_layers))
-    ax = sns.heatmap(heatmap, annot=False, cmap='viridis', cbar=True)
-    ax.set_xlabel('Tokens')
-    ax.set_ylabel('Layers')
-
-    # Annotate each cell with the token name
-    for i in range(n_layers):
-        for j in range(k):
-            plt.text(j + 0.5, i + 0.5, token_names_matrix[i][j], fontsize=12,
-                     ha='center', va='center', color='white', rotation=45,fontproperties=font)
-
-    plt.show()
-    return most_likely_tokens
 
 
 

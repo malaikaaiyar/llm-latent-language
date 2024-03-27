@@ -13,6 +13,7 @@ from transformer_lens import HookedTransformer
 import json
 from tqdm import tqdm
 import pandas as pd
+from typing import List, Tuple
 
 torch.set_grad_enabled(False)
 
@@ -41,7 +42,7 @@ os.environ["TRANSFORMERS_CACHE"] = "~/rds/rds-dsk-lab-eWkDxBhxBrQ/transformers_c
 os.environ["HF_HOME"] = "~/rds/rds-dsk-lab-eWkDxBhxBrQ/transformers_cache"
 
 # %%
-LOAD_MODEL = True
+LOAD_MODEL = False
 if 'model' not in locals() and LOAD_MODEL:
     model = HookedTransformer.from_pretrained(cfg.model_name, device=device)
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -112,34 +113,7 @@ print(f"Loaded {len(fr_to_en_pairs)} examples")
 #     fr_answer.append(fr_id)
 #     en_answer.append(en_id)    
 # %%
-def gen_translation_prompt(src_words, dest_words, src_lang="français", dest_lang="English", new_word=None):
-    """
-    Generate a translation prompt based on source and destination words.
 
-    Args:
-        src_words (list): List of source words.
-        dest_words (list): List of destination words.
-        src_lang (str, optional): Source language. Defaults to "français".
-        dest_lang (str, optional): Destination language. Defaults to "English".
-        new_word (str, optional): Additional word to include in the prompt. Defaults to None.
-
-    Returns:
-        str: The generated translation prompt.
-    """
-    base_prompt = ""
-    for src, dest in zip(src_words, dest_words):
-        base_prompt += f"{src_lang}: {src} {dest_lang}: {dest} "
-    if new_word is not None:
-        base_prompt += f"{src_lang}: {new_word} {dest_lang}:"
-    return base_prompt.strip()
-# %%
-translation_base_prompt = gen_translation_prompt(french_prompt_words, english_prompt_words)
-translation_prompts = []
-en_id_answers = []
-for fr, fr_id, en, en_id in fr_to_en_pairs:
-    prompt = translation_base_prompt + " français: " + fr + " English:"
-    translation_prompts.append(prompt)
-    en_id_answers.append(en_id)    
 
 # %%
 # from nnsight import LanguageModel
@@ -148,33 +122,35 @@ for fr, fr_id, en, en_id in fr_to_en_pairs:
 #                               device_type = "cuda",
 #                               use_auth_token = "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")
 # print(nnsight_model)
+NNSIGHT_AUTH = "Vb1oeK7fXOFekFtbspVJ"
 
+def latent_lang(
+    prompts: List[str], 
+    model: Any, 
+    id_family: List[Tuple[int, int]]) -> Float[Tensor, "n_langs n_layers n_prompts"]:
+    """
+    Perform latent language modeling on the given prompts using the provided model.
 
+    Args:
+        prompts (str): The prompts to generate language models for.
+        model: The language model to use for generation.
+        id_family: The family of IDs for each language.
 
-"""
-TODO FIX THIS SHIT
-"""
-
-def latent_lang(prompts, model, id_family):
-    probs = [torch.zeros(len(prompts), model.config.n_layers) for _ in range(len(id_family))]
-    for i, prompt in enumerate(prompts):
-        output, cache = model.run_with_cache(prompt)
+    Returns:
+        layer_probs (torch.Tensor): The probabilities of the next token for each language, layer, and prompt.
+    """
+    n_langs = len(id_family)
+    layer_probs = torch.zeros_like((n_langs, len(prompts), model.config.n_layers))
+    for i in tqdm(range(len(prompts))):
+        output, cache = model.run_with_cache(prompts[i])
         for j in range(model.config.n_layers):
-            
-            
             resid = cache[f'blocks.{j}.hook_resid_post'] 
             ln_resid = model.ln_final(resid)
             logits = model.unembed(ln_resid)
-            #logits = ln_resid[0, -1, :] @ model.unembed.W_U + model.unembed.b_U
-            zh_prob = torch.softmax(logits[0, -1, :], dim=-1)[zh_answer_ids[i]].item()
-            es_prob = torch.softmax(logits[0, -1, :], dim=-1)[es_answer_ids[i]].item()
-        
-        zh_probs[j, i] = zh_prob
-        es_probs[j, i] = es_prob
-            
-            resid = cache[j]
-            for k, ids in enumerate(id_family):
-                probs[k][i, j] = torch.softmax(output[0, ids, j], dim=-1).max()
+            next_tok_prob = torch.softmax(logits[0, -1], dim=-1)
+            for k in range(n_langs):
+                layer_probs[k,j,i] = next_tok_prob[id_family[k,i]].sum()
+    return layer_probs
 
 # %%
 en_guesses = []
@@ -217,3 +193,5 @@ for fr, fr_id, en, en_id in fr_to_en_pairs:
     prompt = translation_base_prompt + " français: " + fr + " English:"
     translation_prompts.append(prompt)
     en_id_answers.append(en_id)    
+    
+#

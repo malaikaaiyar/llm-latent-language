@@ -1,3 +1,5 @@
+sentencepiece
+eindex
 torch
 torchvision
 torch
@@ -11,10 +13,13 @@ seaborn
 tqdm 
 scipy 
 transformers
+transformer_lens
 accelerate
+eindex
 bitsandbytes
 pytz
 PyYAML
 safetensors
 papermill
 ipykernel
+huggingface
