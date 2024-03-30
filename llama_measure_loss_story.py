@@ -85,17 +85,49 @@ with open('data/llama/zh_en_vocab.pkl', 'rb') as f:
 
 en_ids, zh_ids = llama_langs['en_ids'], llama_langs['zh_ids']
 
-for tok_prompt in chinese_tokens:
-    output, cache = model.run_with_cache(tok_prompt):
-    hidden_layers=  []        
-
-
-
 """
 TOOD FINISH THIS THING
 """
 @torch.no_grad
-def per_layer_prediction_loss(prompt, model, tokenizer):
-    if not isinstance(prompt, torch.Tensor):
-        prompt = tokenizer.encode(prompt, return_tensors="pt")
+def per_layer_prediction_loss(batch_prompt: torch.Tensor, model: HookedTransformer, tokenizer: AutoTokenizer, answer_prompt : Optional[torch.Tensor], partition : List[torch.Tensor]) -> None:
+
+    if not isinstance(batch_prompt, torch.Tensor):
+        batch_prompt = tokenizer.encode(batch_prompt, return_tensors="pt")
+    
+    if answer_prompt is None:
+        answer_prompt = batch_prompt
+        
+    for (src_prompt, dest_prompt) in zip(batch_prompt, answer_prompt):
+        output, cache = model.run_with_cache(src_prompt)
+        hidden_layers = []
+        
+        for i in range(model.cfg.n_layers):
+            layer_cache = cache[f'blocks.{i}.hook_resid_post']  # (batch=1, seq, d_model)
+            # if only_last_token:
+            # layer_cache = eindex(layer_cache, last_token_index, "i [i] j") # (batch=1, d_model)
+            hidden_l.append(layer_cache) # (batch=1, seq?, d_model)
+                
+        hidden = torch.stack(hidden_l, dim=1)  # (batch=1, num_layers, seq?, d_model)
+        rms_out_ln = model.ln_final(hidden) # (batch=1, num_layers, seq?, d_model)
+        logits_per_layer = model.unembed(rms_out_ln) # (batch=1, num_layers, seq?, vocab_size)
+        probs = torch.nn.functional.softmax(logits_per_layer, dim=-1)
+        
+        
+        # compute language probability
+        partition_probs = []
+        for partition in partitions:
+            batch_partition_prob = probs[:, :, -1, partition].sum(dim=-1) #(batch, num_layers) 
+            avg_partition_prob = batch_partition_prob.mean(dim=0) # (num_layers)
+            partition_probs.append(avg_partition_prob)
+            
+        return partition_probs
+        
+             
+            
+        
+        
+        
+
+    
+        
 # %%
