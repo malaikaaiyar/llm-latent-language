@@ -1,4 +1,5 @@
 sentencepiece
+git+https://github.com/callummcdougall/eindex.git
 eindex
 torch
 torchvision

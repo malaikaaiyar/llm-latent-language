@@ -6,10 +6,10 @@ import pandas as pd
 from dataclasses import dataclass, field
 torch.set_grad_enabled(False)
 import warnings
-import langdetect
-import langid
+#import langdetect
+#import langid
 import pandas as pd
-from langdetect import detect
+#from langdetect import detect
 import dq
 import eindex
 from transformers import LlamaForCausalLM, LlamaTokenizer, LogitsProcessor
@@ -18,7 +18,6 @@ from transformers import AutoTokenizer
 import matplotlib.pyplot as plt
 import einops
 import pickle
-from eindex import eindex
 import time
 from llama_utils import measure_top_k_accuracy
 # %%
@@ -84,46 +83,63 @@ with open('data/llama/zh_en_vocab.pkl', 'rb') as f:
 
 
 en_ids, zh_ids = llama_langs['en_ids'], llama_langs['zh_ids']
+# %%
+
+from typing import List
 
 """
 TOOD FINISH THIS THING
 """
 @torch.no_grad
-def per_layer_prediction_loss(batch_prompt: torch.Tensor, model: HookedTransformer, tokenizer: AutoTokenizer, answer_prompt : Optional[torch.Tensor], partition : List[torch.Tensor]) -> None:
+def per_layer_prediction_loss(batch_prompt: torch.Tensor, 
+                              model: HookedTransformer, 
+                              tokenizer: AutoTokenizer, 
+                              partitions : List[torch.Tensor]) -> None:
 
     if not isinstance(batch_prompt, torch.Tensor):
         batch_prompt = tokenizer.encode(batch_prompt, return_tensors="pt")
     
-    if answer_prompt is None:
-        answer_prompt = batch_prompt
-        
-    for (src_prompt, dest_prompt) in zip(batch_prompt, answer_prompt):
-        output, cache = model.run_with_cache(src_prompt)
-        hidden_layers = []
+    partition_probs = []
+    for prompt in batch_prompt:
+        output, cache = model.run_with_cache(batch_prompt)
+        hidden_l = []
         
         for i in range(model.cfg.n_layers):
-            layer_cache = cache[f'blocks.{i}.hook_resid_post']  # (batch=1, seq, d_model)
+            layer_cache = cache[f'blocks.{i}.hook_resid_post'].detach().cpu()  # (batch=1, seq, d_model)
             # if only_last_token:
             # layer_cache = eindex(layer_cache, last_token_index, "i [i] j") # (batch=1, d_model)
-            hidden_l.append(layer_cache) # (batch=1, seq?, d_model)
-                
+            hidden_l.append(layer_cache[:, -1]) # (batch=1, seq?, d_model)
+        del cache
         hidden = torch.stack(hidden_l, dim=1)  # (batch=1, num_layers, seq?, d_model)
         rms_out_ln = model.ln_final(hidden) # (batch=1, num_layers, seq?, d_model)
-        logits_per_layer = model.unembed(rms_out_ln) # (batch=1, num_layers, seq?, vocab_size)
+        print(rms_out_ln.shape)
+        logits_per_layer = rms_out_ln @ model.unembed.W_U + model.unembed.b_U # (batch=1, num_layers, seq?, vocab_size)
         probs = torch.nn.functional.softmax(logits_per_layer, dim=-1)
         
-        
         # compute language probability
-        partition_probs = []
         for partition in partitions:
-            batch_partition_prob = probs[:, :, -1, partition].sum(dim=-1) #(batch, num_layers) 
-            avg_partition_prob = batch_partition_prob.mean(dim=0) # (num_layers)
-            partition_probs.append(avg_partition_prob)
+            batch_partition_prob = probs[0, :, partition].sum(dim=-1) #(batch, num_layers) 
+            partition_probs.append(batch_partition_prob)
             
-        return partition_probs
-        
-             
-            
+    return torch.stack(partition_probs, dim=0)
+# %%
+chinese_text = []
+with open('data/story/llama_zh_2.txt', 'r', encoding='utf-8') as file:
+    chinese_text = file.readlines()
+chinese_text = [line.strip() for line in chinese_text]
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+chinese_tokens = tokenizer(chinese_text, return_tensors="pt", padding=True).input_ids.to(device)
+# %%
+part_prob_mean = per_layer_prediction_loss(chinese_tokens, model, tokenizer, [en_ids, zh_ids])
+# %% 
+plt.plot(partition_probs[0].cpu(), label='zh')
+plt.plot(partition_probs[1].cpu(), label='en')
+plt.legend()
+plt.title('Language Probability per Layer LLama-2')
+plt.xlabel('Layer')
+plt.ylabel('Probability')
+plt.show()
         
         
         
