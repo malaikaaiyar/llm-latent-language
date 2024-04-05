@@ -149,13 +149,13 @@ class BlockOutputWrapper(torch.nn.Module):
         return self.block.self_attn.activations
 
 class LlamaHelper:
-    def __init__(self, dir='/dlabdata1/llama2_hf/Llama-2-7b-hf', hf_token=None, device=None, load_in_8bit=True, use_embed_head=False, device_map='auto'):
+    def __init__(self, model='meta-llama/Llama-2-7b-hf', hf_token=None, device=None, load_in_8bit=True, use_embed_head=False, device_map='auto'):
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
-        self.tokenizer = AutoTokenizer.from_pretrained(dir, use_auth_token=hf_token)
-        self.model = AutoModelForCausalLM.from_pretrained(dir, use_auth_token=hf_token,
+        self.tokenizer = AutoTokenizer.from_pretrained(model, use_auth_token=hf_token)
+        self.model = AutoModelForCausalLM.from_pretrained(model, use_auth_token=hf_token,
                                                           device_map=device_map,
                                                           load_in_8bit=load_in_8bit)
         self.use_embed_head = True
