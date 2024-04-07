@@ -186,14 +186,29 @@ from torch import Tensor
 from jaxtyping import Int, Float
 from transformer_lens.hook_points import HookPoint
 
-
-def remove_component(x : Float[Tensor, "dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "dmodel"]:
-    # Removes the projection of x onto the subspace spanned by the columns of Y
-    Y = Y.float().T
+def proj(x : Float[Tensor, "dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "dmodel"]:
+    # Computes the projection of x onto the subspace spanned by the columns of Y
+    #This is slow and runs in O(d^2)? time
+    # Y = Y.float().T
+    # x = x.float()
+    # P = Y @ torch.pinverse(Y)
+    # proj_x = x - P @ x.squeeze()
+    # return proj_x
+    
+    Y = Y.float().T #(dmodel, numvec)
     x = x.float()
-    P = Y @ torch.pinverse(Y)
-    proj_x = x - P @ x.squeeze()
-    return proj_x
+
+    # Solve the linear system (Y^T @ Y) @ c = Y^T @ x
+    # c is the coefficients of the projection of x onto the subspace spanned by the columns of Y
+    # so the projection of x onto the subspace spanned by the columns of Y is Y @ c
+    c = torch.linalg.solve(Y.T @ Y, Y.T @ x.unsqueeze(1)).squeeze()
+    return Y @ c
+
+
+def rejection(x : Float[Tensor, "dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "dmodel"]:
+    return x - proj(x, Y)
+    
+    
 # %%
 
 def measure_lang_probs(dataset, steer = False, model=model, tokenizer = tokenizer, device=device):
@@ -216,7 +231,7 @@ def measure_lang_probs(dataset, steer = False, model=model, tokenizer = tokenize
         
         last_tblock = tblock_output[:, -1]
         subspace = W_U.T[latent_tok_ids]
-        last_tblock_steer = remove_component(last_tblock, subspace)
+        last_tblock_steer = rejection(last_tblock, subspace)
         tblock_output[:, -1] = last_tblock_steer
         return tblock_output
     
