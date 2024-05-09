@@ -4,49 +4,55 @@
 
 # %%
 import pandas as pd
-import sys
-import os
 from dataclasses import dataclass
-import json
 import numpy as np
 from matplotlib import pyplot as plt
-import seaborn as sns
 import torch
-import torch.nn as nn
-from llamawrapper import load_unemb_only, LlamaHelper
-import seaborn as sns
+import sys
+import os
+#from llamawrapper import load_unemb_only, LlamaHelper
 from scipy.stats import bootstrap
 from utils import plot_ci, plot_ci_plus_heatmap
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformer_lens import HookedTransformer
-import time
-import pickle
+import gen_data
 # fix random seed
 seed = 42
 np.random.seed(seed)
 torch.manual_seed(seed)
 # %%
-input_lang = 'fr'
-target_lang = 'zh'
-model_size = '7b'
-custom_model = 'meta-llama/Llama-2-%s-hf'%model_size
-single_token_only = False
-multi_token_only = False
-out_dir = './visuals'
-hf_token = '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'
-# %%
-prefix = "./data/langs/"
-df_en_fr = pd.read_csv(f'{prefix}{input_lang}/clean.csv').reindex()
-df_en_de = pd.read_csv(f'{prefix}{target_lang}/clean.csv').reindex()
-# %%
+
+@dataclass
+class Config:
+    seed: int = 42
+    src_lang: str = 'fr'
+    dest_lang: str = 'zh'
+    latent_lang: str = 'en'
+    model_size: str = '7b'
+    model_name: str = 'meta-llama/Llama-2-%s-hf' % model_size
+    single_token_only: bool = False
+    multi_token_only: bool = False
+    out_dir: str = './visuals'
+    hf_token: str = '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'
+    dataset_path: str = "./data/langs/"
+    debug: bool = True
+
+cfg = Config()
+
+tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=False, add_prefix_space=False)
+tokenizer_vocab = tokenizer.get_vocab()
+
+df_src = pd.read_csv(os.path.join(cfg.dataset_path, cfg.src_lang, 'clean.csv')).reindex()
+df_dest = pd.read_csv(os.path.join(cfg.dataset_path, cfg.dest_lang, 'clean.csv')).reindex()
+df_raw_data = gen_data.merge_datasets(df_src, df_dest, tokenizer_vocab, cfg)
+dataset = gen_data.gen_translation_task(df_raw_data, tokenizer_vocab, cfg)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model_name = "meta-llama/Llama-2-7b-hf"
-tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False, add_prefix_space=False)
+tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=False, add_prefix_space=False)
 #hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
 # %%
-model = HookedTransformer.from_pretrained_no_processing(model_name,
+model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
                                                         device='cuda:0', 
                                                         low_cpu_mem_usage=True,
                                                         dtype=torch.float16)
@@ -57,68 +63,8 @@ model = HookedTransformer.from_pretrained_no_processing(model_name,
 #                                                           device_map=device_map,
 #                                                           load_in_8bit=load_in_8bit)
 # %%
-count = 0
-for idx, word in enumerate(df_en_de['word_translation']):
-    if word in tokenizer.get_vocab() or '▁'+word in tokenizer.get_vocab():
-        count += 1
-        if multi_token_only:
-            df_en_de.drop(idx, inplace=True)
-    elif single_token_only:
-        df_en_de.drop(idx, inplace=True)
 
-print(f'for {target_lang} {count} of {len(df_en_de)} are single tokens')
 
-if input_lang == target_lang:
-    df_en_de_fr = df_en_de.copy()
-    df_en_de_fr.rename(columns={'word_original': 'en', 
-                                f'word_translation': target_lang if target_lang != 'en' else 'en_tgt'}, 
-                                inplace=True)
-else:
-    df_en_de_fr = df_en_de.merge(df_en_fr, on=['word_original'], suffixes=(f'_{target_lang}', f'_{input_lang}'))
-    df_en_de_fr.rename(columns={'word_original': 'en', 
-                                f'word_translation_{target_lang}': target_lang if target_lang != 'en' else 'en_tgt', 
-                                f'word_translation_{input_lang}': input_lang if input_lang != 'en' else 'en_in'}, 
-                                inplace=True)
-# delete all rows where en is contained in de or fr
-if target_lang != 'en':
-    for i, row in df_en_de_fr.iterrows():
-        if row['en'].lower() in row[target_lang].lower():
-            df_en_de_fr.drop(i, inplace=True)
-
-print(f'final length of df_en_de_fr: {len(df_en_de_fr)}')
-# %%
-def token_prefixes(token_str: str):
-    n = len(token_str)
-    tokens = [token_str[:i] for i in range(1, n+1)]
-    return tokens 
-
-def add_spaces(tokens):
-    return ['▁' + t for t in tokens] + tokens
-
-def capitalizations(tokens):
-    return list(set(tokens))
-
-def unicode_prefix_tokid(zh_char = "云", tokenizer=tokenizer):
-    start = zh_char.encode().__str__()[2:-1].split('\\x')[1]
-    unicode_format = '<0x%s>'
-    start_key = unicode_format%start.upper()
-    if start_key in tokenizer.get_vocab():
-        return tokenizer.get_vocab()[start_key]
-    return None
-
-def process_tokens(token_str: str, tokenizer, lang):
-    with_prefixes = token_prefixes(token_str)
-    with_spaces = add_spaces(with_prefixes)
-    with_capitalizations = capitalizations(with_spaces)
-    final_tokens = []
-    for tok in with_capitalizations:
-        if tok in tokenizer.get_vocab():
-            final_tokens.append(tokenizer.get_vocab()[tok])
-    if lang in ['zh', 'ru']:
-        tokid = unicode_prefix_tokid(token_str, tokenizer)
-        if tokid is not None:
-            final_tokens.append(tokid)
-    return final_tokens
 # %%
 id2voc = {id:voc for voc, id in tokenizer.get_vocab().items()}
 def get_tokens(token_ids, id2voc=id2voc):
@@ -128,77 +74,7 @@ def compute_entropy(probas):
     probas = probas[probas>0]
     return (-probas*torch.log2(probas)).sum(dim=-1)
 
-lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
-def sample(df, ind, k=5, tokenizer=tokenizer, lang1='fr', lang2='de', lang_latent='en'):
-    df = df.reset_index(drop=True)
-    temp = df[df.index!=ind]
-    sample = pd.concat([temp.sample(k-1), df[df.index==ind]], axis=0)
-    prompt = ""
-    for idx, (df_idx, row) in enumerate(sample.iterrows()):
-        if idx < k-1:
-            prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "{row[lang2]}"\n'
-        else:
-            prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "'
-            in_token_str = row[lang1]
-            out_token_str = row[lang2]
-            out_token_id = process_tokens(out_token_str, tokenizer, lang2)
-            latent_token_str = row[lang_latent]
-            latent_token_id = process_tokens(latent_token_str, tokenizer, 'en')
-            intersection = set(out_token_id).intersection(set(latent_token_id))
-            if len(out_token_id) == 0 or len(latent_token_id) == 0:
-                yield None
-            if lang2 != 'en' and len(intersection) > 0:
-                yield None
-            yield {'prompt': prompt, 
-                'out_token_id': out_token_id, 
-                'out_token_str': out_token_str,
-                'latent_token_id': latent_token_id, 
-                'latent_token_str': latent_token_str, 
-                'in_token_str': in_token_str}
-            
-            
-# %%            
-dataset_path = f'{os.path.join(out_dir, custom_model)}/translation/{model_size}_{input_lang}_{target_lang}_dataset'
-if single_token_only:
-    dataset_path += '_single_token'
-elif multi_token_only:
-    dataset_path += '_multi_token'
-dataset_path += '.csv'
 
-
-if os.path.exists(dataset_path):
-    print(f"Loading dataset from {dataset_path}")
-    with open(dataset_path, 'rb') as file:
-        dataset = pickle.load(file)
-else:
-    # TODO: This is painfully slow for some reason. Investigate why.
-    print("Generating dataset...")
-    dataset = []
-    for ind in tqdm(range(len(df_en_de_fr))):
-        d = next(sample(df_en_de_fr, ind, lang1=input_lang, lang2=target_lang))
-        if d is None:
-            continue
-        dataset.append(d)
-    os.makedirs(f'{os.path.join(out_dir, custom_model)}/translation', exist_ok=True)
-    with open(dataset_path, 'wb') as file:
-        pickle.dump(dataset, file)
-
-# if os.path.exists(dataset_path):
-#     print(f"Loading dataset from {dataset_path}")
-#     df = pd.read_csv(dataset_path)
-#     dataset = df.to_dict('records')
-# else:
-#     print("Generating dataset...")
-#     dataset = []
-#     for ind in tqdm(range(len(df_en_de_fr))):
-#         d = next(sample(df_en_de_fr, ind, lang1=input_lang, lang2=target_lang))
-#         if d is None:
-#             continue
-#         dataset.append(d)
-    
-#     df = pd.DataFrame(dataset)
-#     os.makedirs(f'{os.path.join(out_dir, custom_model)}/translation', exist_ok=True)
-#     df.to_csv(dataset_path, index=False)
 # %%
 
 from torch import Tensor

@@ -5,6 +5,17 @@ from torch import Tensor
 import time
 from tqdm import tqdm
 
+# David Quarel
+# Testing various implementations of vector projection onto a subspace.
+
+# proj2 is probably ideal
+
+# All implementations produce correct results.
+# proj1 execution time: 2.637066 seconds
+# proj2 execution time: 0.087193 seconds
+# proj3 execution time: 0.371738 seconds
+# proj4 execution time: 0.412574 seconds
+
 
 def proj3(x: Float[Tensor, "dmodel"], Y: Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "dmodel"]:
     Y = Y.float().T
