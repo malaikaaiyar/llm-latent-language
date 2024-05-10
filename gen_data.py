@@ -1,139 +1,216 @@
-# Generate clean data set of csv file of english, chinese, korean words, Each should be a single token
-
+import sys
 import os
-import pandas as pd
-from dataclasses import dataclass, field
+import numpy as np
 import torch
+from dataclasses import dataclass
+import pandas as pd
 from transformers import AutoTokenizer
-from dq_utils import get_space_char, raw_tok_to_id, lang2name
-import json
-
-@dataclass
-class Config:
-    source_lang: str = 'zh'
-    target_lang: str = 'ko'
-    think_lang: str = 'en'
-    model_name: str = 'meta-llama/Llama-2-7b-hf'
-    base_path: str = 'data/langs/'
-    model_kwargs: dict = field(default_factory=dict)
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-cfg = Config()
-cfg.model_kwargs = {'use_fast': False, 'add_prefix_space': False}
-
-tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, **cfg.model_kwargs)
-
-# read the csv files from each location
+from tqdm import tqdm
 # %%
 
-def gen_worddict(cfg):
-    dfs = {}
-    for lang in lang2name.keys():
-        df_path = os.path.join(cfg.base_path, lang, "clean.csv")
-        df = pd.read_csv(df_path)
-        dfs[lang] = df
-        
-    word_dict = {}
-    for lang, df in dfs.items():
-        for index, row in df.iterrows():
-            word = row['word_original']
-            translation = row['word_translation']
-            if word not in word_dict:
-                word_dict[word] = {}
-            word_dict[word][lang] = translation
-    
-    return word_dict
+# Get the current working directory
 
-word_dict = gen_worddict(cfg)
-list(word_dict.items())[0]
+# os.chdir("/root/llm-latent-language")
+# print(f"Current Working Directory: {os.getcwd()}")
+
 # %%
-def filter_worddict(word_dict, cfg, tokenizer=tokenizer):
+
+def merge_datasets(df_src, df_dest, vocab, cfg):
     """
-    Filters the word dictionary for words that have a single token in all languages
+    Process the dataset by filtering out rows that contain single tokens not present in the tokenizer's vocabulary.
+    Then, merge the filtered source and destination dataframes based on the original word.
 
     Args:
-        word_dict (dict): The word dictionary containing translations for different languages.
-        cfg (object): The configuration object containing language settings.
-        tokenizer (object, optional): The tokenizer object used for tokenization. Defaults to tokenizer.
+        df_src (pandas.DataFrame): The source dataframe.
+        df_dest (pandas.DataFrame): The destination dataframe.
+        tokenizer (Tokenizer, optional): The tokenizer object used for tokenization. Defaults to tokenizer.
+        cfg (Config, optional): The configuration object. Defaults to cfg.
 
     Returns:
-        dict: The filtered word dictionary.
+        pandas.DataFrame: The merged dataframe containing the filtered data.
+    """
+
+    # this is expensive, only do it once and use the same vocab
+    # DO NOT USE if x in tokenizer.get_vocab()
+
+    src_lang = cfg.src_lang
+    dest_lang = cfg.dest_lang
+    debug = cfg.debug
+
+    def keep_single_toks(df):
+        """
+        Filter out rows in the DataFrame that contain words that are not present in the given vocabulary.
+
+        Args:
+            df (pandas.DataFrame): The input DataFrame containing the word translations.
+
+        Returns:
+            pandas.DataFrame: A new DataFrame with rows filtered based on the vocabulary.
+
+        """
+        count = 0
+        new_df = df.copy()
+        for idx, word in enumerate(new_df['word_translation']):
+            if word in vocab or '▁'+word in vocab:
+                count += 1
+            else:
+                new_df.drop(idx, inplace=True)
+        debug and print(f'{count}/{len(df)} are single tokens')
+        return new_df
+
+        
+    df_src = keep_single_toks(df_src)
+    df_dest = keep_single_toks(df_dest)
+    
+    df_all = df_dest.merge(df_src, on=['word_original'], suffixes=(f'_{dest_lang}', f'_{src_lang}'))
+    df_all.rename(columns={'word_original': 'en', 
+                            f'word_translation_{dest_lang}': dest_lang, 
+                            f'word_translation_{src_lang}': src_lang}, 
+                            inplace=True)
+    debug and print(f"Merged tokens: {len(df_all)}")
+    return df_all
+        
+
+def find_all_tokens(token_str: str, vocab, return_tensors = "str"):
+    """
+    Given a string, find all tokens in the vocab that are prefixes of the string (with/without space)
+
+    Args:
+        token_str (str): The token string to search for tokens in.
+        vocab (list): The vocabulary containing the valid tokens.
+
+    Returns:
+        list: A list of tokens found in the token string that exist in the vocabulary.
     """
     
-    new_word_dict = {}
-    space_char = get_space_char(tokenizer)
-    languages = [cfg.source_lang, cfg.target_lang, cfg.think_lang]
-    for en_word in word_dict.keys(): #baseword always in english
-        keepword = True
+    def unicode_leading_byte(token_str : str):
+        """
+        Returns the leading byte of a given token string if it is outside the ASCII range.
+
+        Args:
+            token_str (str): The token string to check.
+
+        Returns:
+            str or None: The leading byte of the token string if it is outside the ASCII range, None otherwise.
+        """
+        leading_byte = token_str.encode("utf-8")[0]
+        if leading_byte >= 128: #outside ASCII range
+            leading_byte = f'<0x{(token_str.encode("utf-8")[0]):X}>' # "好" -> "<0xE5>" 
+            if leading_byte in vocab:
+                return leading_byte
+        return None
+    
+    def token_prefixes(token_str: str):
+        """
+        Generates all possible prefixes of a given token string.
+
+        Args:
+            token_str (str): The token string.
+
+        Returns:
+            list: A list of all possible prefixes of the token string.
+        """
+        return [token_str[:i] for i in range(1, len(token_str)+1)]
+    
+    def add_spaces(tokens):
+        """
+        Adds a space character at the beginning of each token in a given list of tokens.
+
+        Args:
+            tokens (list): The list of tokens.
+
+        Returns:
+            list: A new list of tokens with a space character added at the beginning of each token.
+        """
+        return ['▁' + t for t in tokens] + tokens
+    
+    token_strs = token_prefixes(token_str)
+    token_strs = list(set(add_spaces(token_strs)))
+    final_tokens = [tok for tok in token_strs if tok in vocab]
+    
+    # just add leading byte for all languages unless it's in ascii range
+    tokid = unicode_leading_byte(token_str)
+    if tokid is not None and tokid not in final_tokens:
+        final_tokens.append(tokid)
+    
+    if return_tensors == "pt":
+        return torch.tensor([vocab[x] for x in final_tokens], dtype=torch.int)
+    else:
+        return final_tokens
+    
         
-        #check translations exist for latent and target languages
-        translated = [word_dict[en_word].get(lang) for lang in languages]
-        if None in translated:
-            print(f"Missing translation for {en_word}")
-            continue
-        
-        #both target language and latent language should be a single token
-        new_dict = {}
-        for word, lang in zip(translated, languages):
-            
-            if lang == 'fr' or lang == 'en':
-                word = space_char + word
-                
-            if lang == 'ko':
-                #take first character
-                word = word[0]
-                
-            tok_id, toked_word = raw_tok_to_id(word, tokenizer)
-                
-            if tok_id is not None:
-                # print(f"Found {lang} token for {toked_word}, {tok_id}")
-                new_dict[lang] = (toked_word, tok_id)
-            else:
-                print(f"{word} is not tokenizable")
-                keepword = False
-                break
-
-        if keepword:
-            print(f" {en_word} :  {new_dict}")
-            new_word_dict[en_word] = new_dict
-            keepword = False
-        # for word, translations in new_word_dict.items():
-        #     print(f"Kept word: {word}")
-        #     for lang, (translation, token) in translations.items():
-        #         print(f"Language: {lang}, Translation {translation} Token: {token}")
-    return new_word_dict
-
-filtered_word_dict = filter_worddict(word_dict, cfg, tokenizer)
-print(f"Found {len(filtered_word_dict)}/{len(word_dict)} words single token translations.")
-
+    
 # %%
-# Read the words from the file
-file_path = 'data/test/single_tok_lang3.txt'
-with open(file_path, 'r') as file:
-    lines = file.readlines()
+# id2voc = {id:voc for voc, id in tokenizer.get_vocab().items()}
+# def get_tokens(token_ids, id2voc=id2voc):
+#     return [id2voc[tokid] for tokid in token_ids]
 
-# Add the words to word_dict
-for line in lines:
-    words = line.strip().split(',')
-    if len(words) == 3:
-        en_word, zh_word, ko_word = words
-        if en_word not in word_dict:
-            word_dict[en_word] = {}
-        word_dict[en_word][cfg.source_lang] = zh_word
-        word_dict[en_word][cfg.target_lang] = ko_word
-        word_dict[en_word][cfg.think_lang] = en_word
+# def compute_entropy(probas):
+#     probas = probas[probas>0]
+#     return (-probas*torch.log2(probas)).sum(dim=-1)
 
-print(f"Added {len(lines)} words to word_dict.")
+lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
+def gen_translation_task(df, vocab, cfg, return_tensors = "str"):
+    """
+    Generate a dataset for training a model using the given dataframe, vocabulary, and configuration.
 
-# Write word_dict to file
-output_file = './data/word_dict.json'
-with open(output_file, 'w') as file:
-    json.dump(word_dict, file)
+    Args:
+        df (pandas.DataFrame): The input dataframe containing the data.
+        vocab (list): The vocabulary used for tokenization.
+        cfg (Config): The configuration object containing the language settings and other parameters.
 
-# Read the file back
-with open(output_file, 'r') as file:
-    loaded_word_dict = json.load(file)
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a datapoint in the dataset. Each dictionary contains the following keys:
+            - 'prompt': The prompt string used for training.
+            - 'out_token_ids': The token IDs of the output tokens.
+            - 'out_token_str': The string representation of the output tokens.
+            - 'latent_token_ids': The token IDs of the latent tokens.
+            - 'latent_token_str': The string representation of the latent tokens.
+            - 'in_token_str': The string representation of the input tokens.
+    """
+    
+    src_lang = cfg.src_lang
+    dest_lang = cfg.dest_lang
+    latent_lang = cfg.latent_lang
+    k = cfg.num_multi_shot
+    dataset = []
+    alt_dataset = []
+    for ind in tqdm(range(len(df))):
+        df = df.reset_index(drop=True)
+        temp = df[df.index!=ind]
+        sample = pd.concat([temp.sample(k), df[df.index==ind]], axis=0)
+        prompt = ""
+        for idx, (df_idx, row) in enumerate(sample.iterrows()):
+            if idx < k-1:
+                prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "{row[dest_lang]}"\n'
+            elif idx == k-1:
+                prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "'
+                in_token_str, out_token_str, latent_token_str = row[src_lang], row[dest_lang], row[latent_lang]
+                out_token_ids = find_all_tokens(out_token_str, vocab, return_tensors=return_tensors)
+                latent_token_ids = find_all_tokens(latent_token_str, vocab, return_tensors=return_tensors)
+                intersection = set(out_token_ids).intersection(set(latent_token_ids))
+                if len(out_token_ids) == 0 or len(latent_token_ids) == 0:
+                    print(f"Empty token ids for {in_token_str} -> {out_token_str}")
+                    continue
+                if dest_lang != 'en' and len(intersection) > 0:
+                    print(f"Overlap in token ids for {in_token_str} -> {out_token_str}")
+                    continue
+            else:
+                # Handling the steering additional row
+                alt_out_token_str, alt_latent_token_str = row[dest_lang], row[latent_lang]
+                alt_latent_token_ids = find_all_tokens(alt_latent_token_str, vocab, return_tensors=return_tensors)
+                alt_out_token_ids = find_all_tokens(alt_out_token_str, vocab, return_tensors=return_tensors)
 
-# Check if word_dict and loaded_word_dict match
-assert list(word_dict) == list(loaded_word_dict):
+                datapoint = {'prompt': prompt, 
+                    'out_token_ids': out_token_ids, 
+                    'out_token_str': out_token_str,
+                    'latent_token_ids': latent_token_ids, 
+                    'latent_token_str': latent_token_str, 
+                    'in_token_str': in_token_str,
+                    'alt_out_token_ids': alt_out_token_ids, 
+                    'alt_out_token_str': alt_out_token_str,
+                    'alt_latent_token_ids': alt_latent_token_ids, 
+                    'alt_latent_token_str': alt_latent_token_str}
+                dataset.append(datapoint)
+    return dataset
 # %%
