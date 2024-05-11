@@ -10,13 +10,14 @@ inference_dtype = torch.float16
 # inference_dtype = torch.float32
 # inference_dtype = torch.float16
 device = torch.device("cuda")
-# hf_model = AutoModelForCausalLM.from_pretrained(LLAMA_2_7B_CHAT_PATH,
-#                                              torch_dtype=inference_dtype,
-#                                              device_map = "cuda:0",
-#                                              load_in_4bit=True)
+# %%
+hf_model = AutoModelForCausalLM.from_pretrained(LLAMA_2_7B_CHAT_PATH,
+                                             torch_dtype=inference_dtype,
+                                             device_map = "cuda:0",
+                                             load_in_4bit=True)
 
 tokenizer = AutoTokenizer.from_pretrained(LLAMA_2_7B_CHAT_PATH)
-
+# %%
 model = HookedTransformer.from_pretrained_no_processing(LLAMA_2_7B_CHAT_PATH,
                                              dtype=inference_dtype,
                                              device = device,
@@ -26,5 +27,8 @@ model = HookedTransformer.from_pretrained_no_processing(LLAMA_2_7B_CHAT_PATH,
                                              center_unembed=False,
                                              tokenizer=tokenizer)
 # %%
-model.generate("The capital of Germany is", max_new_tokens=500, temperature=0)
+model.generate("The capital of Germany is", max_new_tokens=10, temperature=0)
+# %%
+
+
 # %%

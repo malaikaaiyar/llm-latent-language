@@ -4,7 +4,7 @@
 
 # %%
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
@@ -19,15 +19,19 @@ from transformer_lens import HookedTransformer
 import gen_data
 
 from torch import Tensor
-from typing import Tuple, List, Optional, Dict, Callable
+import torch.nn.functional as F
+from typing import Tuple, List, Optional, Dict, Callable, Iterable
 from jaxtyping import Int, Float
 from transformer_lens.hook_points import HookPoint
 from beartype import beartype
-
+from tuned_lens_wrap import load_tuned_lens
+import einops
+import torch.nn as nn
 # fix random seed
 seed = 42
 np.random.seed(seed)
 torch.manual_seed(seed)
+torch.set_grad_enabled(False)
 # %%
 
 @dataclass
@@ -63,6 +67,11 @@ model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
                                                         device=device, 
                                                         dtype = torch.float16,
                                                         low_cpu_mem_usage=True)
+tuned_lens = load_tuned_lens(cfg.model_name)
+#stuff to make Tuned Lens happy, expecting Huggingface model
+# %%
+
+#stuff to make Tuned Lens happy, expecting Huggingface model
 
 # model = "meta-llama/Llama-2-7b-hf"
 # tokenizer = AutoTokenizer.from_pretrained(model, use_auth_token=hf_token)
@@ -70,6 +79,8 @@ model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
 #                                                           device_map=device_map,
 #                                                           load_in_8bit=load_in_8bit)
 # %%
+
+
 
 
 # %%
@@ -101,8 +112,66 @@ def rejection(x : Float[Tensor, "batch dmodel"], Y : Float[Tensor, "numvec dmode
     
     
 # %%
+class BatchTunedLens(nn.Module):
+    def __init__(self, tuned_lens):
+        super(BatchTunedLens, self).__init__()
+        self.unembed = tuned_lens.unembed
+        
+        num_lenses = len(tuned_lens.layer_translators)
+        out_features, in_features = tuned_lens.layer_translators[0].weight.shape
+        
+        device = tuned_lens.layer_translators[0].weight.device  # Extract device from layer_lens.weight
+        dtype = tuned_lens.layer_translators[0].weight.dtype    # Extract dtype from layer_lens.weight
 
-def get_logits(dataset, steer=None, model=model, tokenizer=tokenizer, device=device):
+        self.W_lens = nn.Parameter(torch.empty((num_lenses, out_features, in_features), device=device, dtype=dtype))
+        self.b_lens = nn.Parameter(torch.empty((num_lenses, out_features), device=device, dtype=dtype))
+        
+        for i in range(num_lenses):
+            self.W_lens[i].data.copy_(tuned_lens.layer_translators[i].weight)
+            self.b_lens[i].data.copy_(tuned_lens.layer_translators[i].bias)
+        
+    def forward(self, h : Float[Tensor, "... num_layers dmodel"], skip_unembed = False):
+        # Note that we add the translator output residually, in contrast to the formula
+        # in the paper. By parametrizing it this way we ensure that weight decay
+        # regularizes the transform toward the identity, not the zero transformation.
+        # See https://github.com/AlignmentResearch/tuned-lens/blob/main/tuned_lens/nn/lenses.py#L311C32-L312C1
+        # nn.Linear uses fused-multiply torch.addmm
+        h_out = einops.einsum(h, self.W_lens, "... layers din, layers dout din -> ... layers dout") + self.b_lens
+        new_h = h + h_out
+        if skip_unembed:
+            return new_h
+        else:
+            return self.unembed(new_h)
+
+#tuned_lens.to(device)
+#batched_tuned_lens = BatchTunedLens(tuned_lens).to(device)
+
+# for i in range(32):
+#     assert torch.equal(batched_tuned_lens.W_lens[i].data, tuned_lens.layer_translators[i].weight.data), "weight no match"
+#     assert torch.equal(batched_tuned_lens.b_lens[i].data, tuned_lens.layer_translators[i].bias.data), "bias no match"
+# print("weight/bias match!")
+
+# resid = torch.randn(32, 4096, dtype = torch.float16, device=device)
+
+# for i in range(32):
+#     #y = ((resid @ batched_tuned_lens.W_lens[i].T) + batched_tuned_lens.b_lens[i])
+#     #y2 = resid @ tuned_lens.layer_translators[0].weight.T + tuned_lens.layer_translators[0].bias
+#     y2 = resid[i] + tuned_lens.layer_translators[i](resid[i])
+#     y3 = batched_tuned_lens(resid, skip_unembed=True)[i]
+#     assert torch.allclose(y2,y3, rtol=0.05, atol = 1e-4), f"failure in layer {i} {y2=} {y3=}"
+# print("linear match!")
+# # %%
+# h = torch.randn(32, 4096).half().to(device)
+# y = batched_tuned_lens(h)
+# y2 = torch.stack([tuned_lens(h[i],i) for i in range(32)], dim=0)
+# print(f"{y.shape=}, {y2.shape=}")
+# torch.allclose(y,y2, rtol=0.05, atol = 1e-4)
+
+
+
+# %%
+# %%
+def get_logits(dataset, cfg=None, model=model, tokenizer=tokenizer, device=device):
     """
     Measure language probabilities for a given dataset.
 
@@ -149,23 +218,19 @@ def get_logits(dataset, steer=None, model=model, tokenizer=tokenizer, device=dev
         subspace: Float[Tensor, "num_vec dmodel"],
         subspace_alt: Float[Tensor, "num_vec2 dmodel"]
     ) -> Float[Tensor, "batch seq dmodel"]:
-        last_tblock = resid[:, -1]
+        v = resid[:, -1]
         # subspace = W_U.T[latent_tok_ids]
-        resid_subspace = proj(last_tblock.float(), subspace.float())
+        proj_A_v = proj(v.float(), subspace.float())
         #resid_alt = proj(last_tblock.float(), subspace_alt.float())
-        
-        norm_resid_subspace = torch.linalg.norm(resid_subspace)
+        proj_B_proj_A_v = proj(proj_A_v, subspace_alt.float())
         #norm_resid_alt=  torch.linalg.norm(resid_alt)
         
-        #print(f"Norm of component to remove {norm_resid_subspace:.3f} Norm to restore {norm_resid_alt:.3f}")
-        fv = subspace_alt.mean(dim=0)
-        fv = fv / torch.linalg.norm(fv)
         
-        resid[:, -1] = last_tblock - resid_subspace + norm_resid_subspace * fv
+        resid[:, -1] = v - proj_A_v + proj_B_proj_A_v
         return resid
     
     
-    def get_latents(tokens, model, steer = None, datapoint = None):
+    def get_latents(tokens, model, datapoint = None):
         all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
         # if latent_ids is None:
         #     output, cache = model.run_with_cache(tokens, names_filter=all_post_resid)
@@ -173,24 +238,24 @@ def get_logits(dataset, steer=None, model=model, tokenizer=tokenizer, device=dev
         #     subspace = model.unembed.W_U.T[latent_ids]
         
             
-        if steer is None:
+        if cfg is None or cfg.steer is None:
             hook_all_resid = []
         else:
             # hook into the residual stream after each layer
-            
-            latent_token_ids = datapoint['latent_token_ids']
-            alt_latent_token_ids = datapoint['alt_latent_token_ids']
+            steer = cfg.steer
+            latent_ids = datapoint['latent_ids']
+            alt_latent_ids = datapoint['alt_latent_ids']
             
             
             if steer == 'unembed':
-                subspace = model.unembed.W_U.T[latent_token_ids]
+                subspace = model.unembed.W_U.T[latent_ids]
                 temp_hook_fn = lambda resid, hook: resid_stream_reject_subspace(resid, hook, subspace)
-                hook_all_resid = [(f'blocks.{j}.hook_resid_post', temp_hook_fn) for j in range(model.cfg.n_layers)]
+                hook_all_resid = [(f'blocks.{j}.hook_resid_post', temp_hook_fn) for j in cfg.steer_layers]
             elif steer == "alt":
-                subspace = model.unembed.W_U.T[latent_token_ids]
-                subspace_alt = model.unembed.W_U.T[alt_latent_token_ids]
+                subspace = model.unembed.W_U.T[latent_ids]
+                subspace_alt = model.unembed.W_U.T[alt_latent_ids]
                 temp_hook_fn = lambda resid, hook: resid_stream_move_subspace(resid, hook, subspace, subspace_alt)
-                hook_all_resid = [(f'blocks.{j}.hook_resid_post', temp_hook_fn) for j in range(15, 25)]
+                hook_all_resid = [(f'blocks.{j}.hook_resid_post', temp_hook_fn) for j in cfg.steer_layers]
             
             else:
                 raise ValueError("Invalid steering method")      
@@ -201,31 +266,36 @@ def get_logits(dataset, steer=None, model=model, tokenizer=tokenizer, device=dev
         latents = [act[:, -1, :] for act in cache.values()]
         #latents = [cache[f'blocks.{i}.hook_resid_post'][:, -1, :] for i in range(model.cfg.n_layers)] 
         latents = torch.stack(latents, dim=1)
-        return latents
+        return latents #(batch=1, num_layers, d_model)
     
     def unemb(latents, model):
         latents_ln = model.ln_final(latents)
         logits = latents_ln @ model.unembed.W_U + model.unembed.b_U
         return logits 
+    
+    
         
     all_logits = []
         
     with torch.no_grad():
         for idx, d in tqdm(enumerate(dataset), total=len(dataset)):
             
-            latent_token_ids = d['latent_token_ids']
-            out_token_ids = d['out_token_ids']
+            latent_ids = d['latent_ids']
+            out_ids = d['out_ids']
             
             tokens = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
             
-            latents = get_latents(tokens, model, steer = steer, datapoint = d)
-            logits = unemb(latents, model) #(batch=1, num_layers, vocab_size)
+            latents = get_latents(tokens, model, datapoint = d)
+            if cfg.tuned_lens:
+                logits = torch.stack([tuned_lens(latents[:,i],i) for i in range(model.cfg.n_layers)], dim=1)
+            else:
+                logits = unemb(latents, model) #(batch=1, num_layers, vocab_size)
             #last = logits.softmax(dim=-1).detach().cpu().squeeze()
             all_logits.append(logits)
             
             
-            # latent_token_probs += [last[:, latent_token_ids].sum(dim=-1)]
-            # out_token_probs += [last[:, out_token_ids].sum(dim=-1)]
+            # latent_probs += [last[:, latent_ids].sum(dim=-1)]
+            # out_probs += [last[:, out_ids].sum(dim=-1)]
             # entropy += [compute_entropy(last)]
             #latents_all += [latents[:, -1, :].float().detach().cpu().clone()]
             # latents_normalized = latents[:, -1, :].float()
@@ -235,44 +305,27 @@ def get_logits(dataset, steer=None, model=model, tokenizer=tokenizer, device=dev
             # energy += [norm/avgUU]
         
 
-    # latent_token_probs = torch.stack(latent_token_probs)
-    # out_token_probs = torch.stack(out_token_probs)
+    # latent_probs = torch.stack(latent_probs)
+    # out_probs = torch.stack(out_probs)
     # entropy = torch.stack(entropy)
     all_logits = torch.stack(all_logits)
-    return all_logits
+    return all_logits.float()
 #energy = torch.stack(energy)
 #latents = torch.stack(latents_all)
 # %%
 
-def compute_layer_probs(probs: Float[Tensor, "num_vocab"],
-                        token_ids: List[Int[Tensor, "num_idx"]],
-    ) -> Float[Tensor, "datapoints num_layers"]:
-    """
-    Compute the layer probabilities for each token ID.
 
-    Args:
-        probs (List[Float[Tensor, "num_vocab"]]): The probabilities for each token ID.
-        token_ids (List[List[int]]): The token IDs for each datapoint.
-
-    Returns:
-        Float[Tensor, "datapoints num_layers"]: The layer probabilities for each datapoint.
-    """
-    layer_probs = []
-    for i, tok_id in enumerate(token_ids):
-        layer_prob = probs[i, :, tok_id].sum(dim=-1) #(num_layers)
-        layer_probs.append(layer_prob.detach().cpu())
-    return torch.stack(layer_probs)
 # %%
-#latent_token_probs, out_token_probs, entropy = measure_lang_probs(dataset)
+#latent_probs, out_probs, entropy = measure_lang_probs(dataset)
 # EXPENSIVE!
 from dq_utils import plot_ci as plot_ci_dq
 
-def plotter(prob_list, label_list, out_path=None, title=None):
+def plotter(logprobs_list, label_list, out_path=None, title=None):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 12))
     
-    for prob, label in zip(prob_list, label_list):
-        plot_ci_dq(torch.log2(prob), ax1, dim=0, label=label)
-        plot_ci_dq(prob, ax2, dim=0, label=label)
+    for logprobs, label in zip(logprobs_list, label_list):
+        plot_ci_dq(logprobs, ax1, dim=0, label=label)
+        plot_ci_dq(torch.exp(logprobs), ax2, dim=0, label=label)
     plt.legend()
     fig.suptitle(title)
     fig.tight_layout()  # Add this line to reduce the gap between subplots and title
@@ -287,35 +340,85 @@ def plotter(prob_list, label_list, out_path=None, title=None):
     plt.show()
 
 # %%
-def run(dataset, id_list, steer=None):
-    logits = get_logits(dataset, steer).squeeze()
-    probs = torch.softmax(logits, dim=-1)
-    prob_list = []
+def run(dataset, id_list, cfg=None):
+    
+    def compute_layer_probs(logprobs: Float[Tensor, "num_vocab"],
+                        token_ids: List[Int[Tensor, "num_idx"]],
+    ) -> Float[Tensor, "datapoints num_layers"]:
+        """
+        Compute the layer probabilities for each token ID.
+
+        Args:
+            probs (List[Float[Tensor, "num_vocab"]]): The probabilities for each token ID.
+            token_ids (List[List[int]]): The token IDs for each datapoint.
+
+        Returns:
+            Float[Tensor, "datapoints num_layers"]: The layer probabilities for each datapoint.
+        """
+        layer_logprobs = []
+        for i, tok_id in enumerate(token_ids):
+            layer_logprob = torch.logsumexp(logprobs[i, :, tok_id], dim=-1) #(num_layers)
+            layer_logprobs.append(layer_logprob.detach().cpu())
+        return torch.stack(layer_logprobs)
+    
+    logits = get_logits(dataset, cfg=cfg).squeeze()
+    logprobs = F.log_softmax(logits, dim=-1)
+    logprob_list = []
     for ids in id_list:
-        prob_list.append(compute_layer_probs(probs, ids))
-    return prob_list
+        logprob_list.append(compute_layer_probs(logprobs, ids))
+    return logprob_list
 
-latent_token_ids = [d['latent_token_ids'] for d in dataset]
-out_token_ids = [d['out_token_ids'] for d in dataset]
-alt_latent_token_ids = [d['alt_latent_token_ids'] for d in dataset]
-alt_out_token_ids = [d['alt_out_token_ids'] for d in dataset]
+latent_ids = [d['latent_ids'] for d in dataset]
+out_ids = [d['out_ids'] for d in dataset]
+alt_latent_ids = [d['alt_latent_ids'] for d in dataset]
+alt_out_ids = [d['alt_out_ids'] for d in dataset]
 
-all_ids = [latent_token_ids, out_token_ids, alt_latent_token_ids, alt_out_token_ids]
+all_ids = [latent_ids, out_ids, alt_latent_ids, alt_out_ids]
 
-# latent_token_probs, out_token_probs = run(dataset, [latent_token_ids, out_token_ids])
-# latent_steer_token_probs, out_steer_token_probs = run(dataset, [latent_token_ids, out_token_ids], steer = 'unembed')
-
-# %%
-lat_control, out_control, alt_lat_control, alt_out_control = run(dataset, all_ids)
-plotter([lat_control, out_control, alt_lat_control, alt_out_control], ["en", "zh", "en_alt", "zh_alt"], title= "no intervention")
-# %%
+# latent_probs, out_probs = run(dataset, [latent_ids, out_ids])
+# latent_steer_probs, out_steer_probs = run(dataset, [latent_ids, out_ids], steer = 'unembed')
 
 # %%
 
 
-# %%
-plotter([latent_token_probs, out_token_probs, latent_steer_token_probs, out_steer_token_probs], ["en", "zh", "en_ablate", "zh_ablate"])
+@dataclass
+class SteerConfig:
+    tuned_lens: bool = False
+    steer: Optional[str] = None
+    steer_layers: Iterable = field(default_factory=lambda: range(15,model.cfg.n_layers))
 
+
+# Now try to create an instance with tuned_lens set to True
+steercfg = SteerConfig()
+
+# %%
+labels = ["en", "zh", "en_alt", "zh_alt"]
+no_intervention = run(dataset, all_ids, steercfg)
+plotter(no_intervention, labels, title= f"{steercfg}")
+# %%
+labels = ["en", "zh", "en_alt", "zh_alt"]
+no_intervention = run(dataset, all_ids, SteerConfig(tuned_lens=True))
+plotter(no_intervention, labels, title= f"{steercfg}")
+
+
+# %%
+intervention = run(dataset, all_ids, SteerConfig(steer = "alt"))
+plotter(intervention, labels, title= "fv?")
+
+intervention = run(dataset, all_ids, SteerConfig(steer = "alt", tuned_lens=True, steer_layers=range(32)))
+plotter(intervention, labels, title= "fv?")
+# %%
+for i in range(32):
+    for j in range(i, 32):
+        cfg = SteerConfig(steer = "alt", tuned_lens=True, steer_layers = range(i,j))
+        intervention = run(dataset, all_ids, cfg=cfg)
+        plotter(intervention, labels, title= f"{cfg}", out_path=f"out/fv_tuned_{i}_{j}.svg")
+        
+for i in range(32):
+    for j in range(i, 32):
+        cfg = SteerConfig(steer = "alt", tuned_lens=False, steer_layers = range(i,j))
+        intervention = run(dataset, all_ids, cfg=cfg)
+        plotter(intervention, labels, title= f"{cfg}", out_path=f"out/fv_{i}_{j}.svg")
 
 
 

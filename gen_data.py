@@ -71,7 +71,7 @@ def merge_datasets(df_src, df_dest, vocab, cfg):
     return df_all
         
 
-def find_all_tokens(token_str: str, vocab, return_tensors = "str"):
+def find_all_tokens(token_str: str, vocab, cfg, return_tensors = "str"):
     """
     Given a string, find all tokens in the vocab that are prefixes of the string (with/without space)
 
@@ -124,14 +124,21 @@ def find_all_tokens(token_str: str, vocab, return_tensors = "str"):
         """
         return ['▁' + t for t in tokens] + tokens
     
-    token_strs = token_prefixes(token_str)
-    token_strs = list(set(add_spaces(token_strs)))
+    if cfg.token_add_prefixes:
+        token_strs = token_prefixes(token_str)
+    else:
+        token_strs = [token_str]
+    
+    if cfg.token_add_spaces:
+        token_strs = list(set(add_spaces(token_strs)))
+        
     final_tokens = [tok for tok in token_strs if tok in vocab]
     
     # just add leading byte for all languages unless it's in ascii range
-    tokid = unicode_leading_byte(token_str)
-    if tokid is not None and tokid not in final_tokens:
-        final_tokens.append(tokid)
+    if cfg.token_add_leading_byte:
+        tokid = unicode_leading_byte(token_str)
+        if tokid is not None and tokid not in final_tokens:
+            final_tokens.append(tokid)
     
     if return_tensors == "pt":
         return torch.tensor([vocab[x] for x in final_tokens], dtype=torch.int)
@@ -162,11 +169,11 @@ def gen_translation_task(df, vocab, cfg, return_tensors = "str"):
     Returns:
         list: A list of dictionaries, where each dictionary represents a datapoint in the dataset. Each dictionary contains the following keys:
             - 'prompt': The prompt string used for training.
-            - 'out_token_ids': The token IDs of the output tokens.
-            - 'out_token_str': The string representation of the output tokens.
-            - 'latent_token_ids': The token IDs of the latent tokens.
-            - 'latent_token_str': The string representation of the latent tokens.
-            - 'in_token_str': The string representation of the input tokens.
+            - 'out_ids': The token IDs of the output tokens.
+            - 'out_str': The string representation of the output tokens.
+            - 'latent_ids': The token IDs of the latent tokens.
+            - 'latent_str': The string representation of the latent tokens.
+            - 'in_str': The string representation of the input tokens.
     """
     
     src_lang = cfg.src_lang
@@ -185,32 +192,94 @@ def gen_translation_task(df, vocab, cfg, return_tensors = "str"):
                 prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "{row[dest_lang]}"\n'
             elif idx == k-1:
                 prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "'
-                in_token_str, out_token_str, latent_token_str = row[src_lang], row[dest_lang], row[latent_lang]
-                out_token_ids = find_all_tokens(out_token_str, vocab, return_tensors=return_tensors)
-                latent_token_ids = find_all_tokens(latent_token_str, vocab, return_tensors=return_tensors)
-                intersection = set(out_token_ids).intersection(set(latent_token_ids))
-                if len(out_token_ids) == 0 or len(latent_token_ids) == 0:
-                    print(f"Empty token ids for {in_token_str} -> {out_token_str}")
+                in_str, out_str, latent_str = row[src_lang], row[dest_lang], row[latent_lang]
+                out_ids = find_all_tokens(out_str, vocab, cfg, return_tensors=return_tensors)
+                latent_ids = find_all_tokens(latent_str, vocab, cfg, return_tensors=return_tensors)
+                intersection = set(out_ids).intersection(set(latent_ids))
+                if len(out_ids) == 0 or len(latent_ids) == 0:
+                    print(f"Empty token ids for {in_str} -> {out_str}")
                     continue
                 if dest_lang != 'en' and len(intersection) > 0:
-                    print(f"Overlap in token ids for {in_token_str} -> {out_token_str}")
+                    print(f"Overlap in token ids for {in_str} -> {out_str}")
                     continue
             else:
                 # Handling the steering additional row
-                alt_out_token_str, alt_latent_token_str = row[dest_lang], row[latent_lang]
-                alt_latent_token_ids = find_all_tokens(alt_latent_token_str, vocab, return_tensors=return_tensors)
-                alt_out_token_ids = find_all_tokens(alt_out_token_str, vocab, return_tensors=return_tensors)
+                alt_in_str, alt_out_str, alt_latent_str = row[src_lang], row[dest_lang], row[latent_lang]
+                alt_latent_ids = find_all_tokens(alt_latent_str, vocab, cfg, return_tensors=return_tensors)
+                alt_out_ids = find_all_tokens(alt_out_str, vocab, cfg, return_tensors=return_tensors)
 
                 datapoint = {'prompt': prompt, 
-                    'out_token_ids': out_token_ids, 
-                    'out_token_str': out_token_str,
-                    'latent_token_ids': latent_token_ids, 
-                    'latent_token_str': latent_token_str, 
-                    'in_token_str': in_token_str,
-                    'alt_out_token_ids': alt_out_token_ids, 
-                    'alt_out_token_str': alt_out_token_str,
-                    'alt_latent_token_ids': alt_latent_token_ids, 
-                    'alt_latent_token_str': alt_latent_token_str}
+                    'out_ids': out_ids.to(torch.int64), 
+                    'out_str': out_str,
+                    'latent_ids': latent_ids.to(torch.int64), 
+                    'latent_str': latent_str, 
+                    'in_str': in_str,
+                    'alt_in_str': alt_in_str,
+                    'alt_out_ids': alt_out_ids.to(torch.int64), 
+                    'alt_out_str': alt_out_str,
+                    'alt_latent_ids': alt_latent_ids.to(torch.int64), 
+                    'alt_latent_str': alt_latent_str}
                 dataset.append(datapoint)
     return dataset
 # %%
+def replace_source_word(prompt, new_french_word):
+    # Split the prompt into lines
+    lines = prompt.strip().split('\n')
+    
+    # Check if there are any lines to process
+    if not lines:
+        return prompt
+    
+    # Get the last line
+    last_line = lines[-1]
+    
+    # Find the position of the last hyphen, which separates French and Chinese words
+    hyphen_pos = last_line.rfind('-')
+    
+    # Replace the French word with the new word, keeping everything after the hyphen unchanged
+    updated_last_line = f'Français: "{new_french_word}" ' + last_line[hyphen_pos:]
+    
+    # Replace the last line in the list with the updated line
+    lines[-1] = updated_last_line
+    
+    # Join the lines back into a single string with new line characters
+    updated_prompt = '\n'.join(lines)
+    
+    return updated_prompt
+
+
+def purge_dataset(dataset, model, cfg):
+    """
+    Purges the dataset by removing instances that the mode doesn't predict correctly,
+    both for the original and the counterfactual prompts.
+
+    Args:
+        dataset (list): The input dataset to be purged.
+        model: The language model used for prediction.
+        tokenizer: The tokenizer used to encode the input prompts.
+
+    Returns:
+        list: The purged dataset.
+    """
+    new_dataset = []
+    device = cfg.device
+    correct = 0
+    tokenizer = model.tokenizer
+    runner = tqdm(dataset)
+    for (i, d) in enumerate(runner):
+        prompt = d['prompt']
+        prompt_tok = tokenizer.encode(prompt, return_tensors='pt').to(device)
+        y_guess = model(prompt_tok)[0, -1].argmax(-1).item()
+        if y_guess not in d['out_ids']:
+            continue
+        cf_prompt = replace_source_word(prompt, d['alt_in_str'])
+        cf_prompt_tok = tokenizer.encode(cf_prompt, return_tensors='pt').to(device)
+        y_guess_cf = model(cf_prompt_tok)[0, -1].argmax(-1).item()
+        if y_guess_cf in d['alt_out_ids']:
+            correct += 1
+            new_dataset.append(d)
+        runner.set_description(f"purge_dataset keeping: {correct}/{i+1}")
+    return new_dataset
+    
+    
+    

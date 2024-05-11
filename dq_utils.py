@@ -2,6 +2,64 @@
 import warnings
 import matplotlib.pyplot as plt
 import torch
+from jaxtyping import Float
+from torch import Tensor
+from tqdm import tqdm
+
+
+def measure_performance(dataset, model):
+    correct = 0
+    loss = 0
+    runner = tqdm(dataset)
+    device = next(model.parameters()).device
+    tokenizer = model.tokenizer
+    for i,d in enumerate(runner):
+        targets = d['out_ids'].to(device)
+        tok_prompt = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
+        logits = model(tok_prompt)[0, -1]
+        nll = -torch.log_softmax(logits, dim=-1)
+        loss += torch.min(nll[targets])
+        correct += torch.any(logits.argmax(-1) == targets)
+        runner.set_description(f"Accuracy: {correct.item() / (i+1):.3f}, Loss: {loss.item() / (i+1):.3f}")
+    return correct / len(dataset), loss / len(dataset)
+
+def plotter(logprobs_list, label_list, out_path=None, title=None):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 12))
+    
+    for logprobs, label in zip(logprobs_list, label_list):
+        plot_ci(logprobs, ax1, dim=0, label=label)
+        plot_ci(torch.exp(logprobs), ax2, dim=0, label=label)
+    plt.legend()
+    fig.suptitle(title)
+    fig.tight_layout()  # Add this line to reduce the gap between subplots and title
+    ax2.set_xlabel('Layer')
+    ax1.set_ylabel('Log Probability')
+    ax2.set_ylabel('Raw Probability')
+    ax1.grid(True, which='both', linestyle=':', linewidth=0.5)  # Add minor gridlines to ax1
+    ax2.grid(True, which='both', linestyle=':', linewidth=0.5)  # Add minor gridlines to ax2
+    plt.grid(True, which='both', linestyle=':', linewidth=0.5)  # Add minor gridlines to the whole figure
+    if out_path is not None:
+        plt.savefig(out_path, format='svg')
+    plt.show()
+
+def proj(x : Float[Tensor, "... dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "... dmodel"]:
+    # Computes the projection of x onto the subspace spanned by the columns of Y
+    Y = Y.transpose(-2, -1) #(dmodel, numvec) #require column vectors
+    # Solve the linear system (Y^T @ Y) @ c = Y^T @ x
+    # c is the coefficients of the projection of x onto the subspace spanned by the columns of Y
+    # so the projection of x onto the subspace spanned by the columns of Y is Y @ c
+    if x.ndim == 1:
+        x = x.unsqueeze(0)
+    
+    c = torch.linalg.solve(Y.transpose(-2, -1)  @ Y, (x @ Y).transpose(-2, -1))    
+    proj_x = (Y @ c).transpose(-2, -1) 
+    return proj_x.squeeze()
+
+
+def rejection(x : Float[Tensor, "batch dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "batch dmodel"]:
+    return x - proj(x, Y)
+    
+
 
 lang2name = {'en' : "English", 
             'zh' : "中文", 
