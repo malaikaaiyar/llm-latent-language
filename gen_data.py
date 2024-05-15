@@ -101,36 +101,17 @@ def find_all_tokens(token_str: str, vocab, cfg, return_tensors = "str"):
         return None
     
     def token_prefixes(token_str: str):
-        """
-        Generates all possible prefixes of a given token string.
-
-        Args:
-            token_str (str): The token string.
-
-        Returns:
-            list: A list of all possible prefixes of the token string.
-        """
-        return [token_str[:i] for i in range(1, len(token_str)+1)]
+        return [token_str[:i] for i in range(1, len(token_str))]
     
     def add_spaces(tokens):
-        """
-        Adds a space character at the beginning of each token in a given list of tokens.
-
-        Args:
-            tokens (list): The list of tokens.
-
-        Returns:
-            list: A new list of tokens with a space character added at the beginning of each token.
-        """
-        return ['▁' + t for t in tokens] + tokens
+        return ['▁' + t for t in tokens]
     
+    token_strs = [token_str]
     if cfg.token_add_prefixes:
-        token_strs = token_prefixes(token_str)
-    else:
-        token_strs = [token_str]
+        token_strs = token_strs +  token_prefixes(token_str)
     
     if cfg.token_add_spaces:
-        token_strs = list(set(add_spaces(token_strs)))
+        token_strs = list(set(token_strs + add_spaces(token_strs)))
         
     final_tokens = [tok for tok in token_strs if tok in vocab]
     
@@ -141,7 +122,7 @@ def find_all_tokens(token_str: str, vocab, cfg, return_tensors = "str"):
             final_tokens.append(tokid)
     
     if return_tensors == "pt":
-        return torch.tensor([vocab[x] for x in final_tokens], dtype=torch.int)
+        return torch.LongTensor([vocab[x] for x in final_tokens])
     else:
         return final_tokens
     
@@ -209,15 +190,16 @@ def gen_translation_task(df, vocab, cfg, return_tensors = "str"):
                 alt_out_ids = find_all_tokens(alt_out_str, vocab, cfg, return_tensors=return_tensors)
 
                 datapoint = {'prompt': prompt, 
-                    'out_ids': out_ids.to(torch.int64), 
+                    'idx' : ind,
+                    'out_ids': out_ids, 
                     'out_str': out_str,
-                    'latent_ids': latent_ids.to(torch.int64), 
+                    'latent_ids': latent_ids, 
                     'latent_str': latent_str, 
                     'in_str': in_str,
                     'alt_in_str': alt_in_str,
-                    'alt_out_ids': alt_out_ids.to(torch.int64), 
+                    'alt_out_ids': alt_out_ids, 
                     'alt_out_str': alt_out_str,
-                    'alt_latent_ids': alt_latent_ids.to(torch.int64), 
+                    'alt_latent_ids': alt_latent_ids, 
                     'alt_latent_str': alt_latent_str}
                 dataset.append(datapoint)
     return dataset
@@ -248,7 +230,7 @@ def replace_source_word(prompt, new_french_word):
     return updated_prompt
 
 
-def purge_dataset(dataset, model, cfg):
+def filter_correct(dataset, model, cfg):
     """
     Purges the dataset by removing instances that the mode doesn't predict correctly,
     both for the original and the counterfactual prompts.
@@ -262,7 +244,7 @@ def purge_dataset(dataset, model, cfg):
         list: The purged dataset.
     """
     new_dataset = []
-    device = cfg.device
+    device = next(model.parameters()).device
     correct = 0
     tokenizer = model.tokenizer
     runner = tqdm(dataset)
@@ -278,7 +260,8 @@ def purge_dataset(dataset, model, cfg):
         if y_guess_cf in d['alt_out_ids']:
             correct += 1
             new_dataset.append(d)
-        runner.set_description(f"purge_dataset keeping: {correct}/{i+1}")
+        runner.set_description(f"filter_correct keeping: {correct}/{len(dataset)}")
+    print(f"Filter dataset: {correct}/{len(dataset)} correct")
     return new_dataset
     
     
