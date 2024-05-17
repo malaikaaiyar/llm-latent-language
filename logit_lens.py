@@ -22,7 +22,7 @@ from matplotlib.colors import LogNorm
 import numpy as np
 # %%
 @torch.no_grad
-def get_logits(dataset, model, intervention=None, cfg=None):
+def get_logits(dataset, model, intervention=None, **kwargs):
     """
     Compute the logits for a given dataset using a language model.
 
@@ -36,9 +36,11 @@ def get_logits(dataset, model, intervention=None, cfg=None):
     Returns:
         torch.Tensor: The computed logits for the dataset.
     """
+    
     device = next(model.parameters()).device
     tokenizer = model.tokenizer
     tuned_lens = model.tuned_lens
+    use_tuned_lens = kwargs.get('use_tuned_lens', False)
     def get_latents(tokens, datapoint):
         """
         Get the latents for a given input sequence.
@@ -55,7 +57,7 @@ def get_logits(dataset, model, intervention=None, cfg=None):
         if intervention is None:
             fwd_hooks = []
         else:
-            fwd_hooks = intervention.fwd_hooks(model, datapoint)
+            fwd_hooks = intervention.fwd_hooks(model, **datapoint, **kwargs)
                 
         with model.hooks(fwd_hooks=fwd_hooks):
             output, cache = model.run_with_cache(tokens, names_filter=all_post_resid)
@@ -79,7 +81,7 @@ def get_logits(dataset, model, intervention=None, cfg=None):
             
             tokens = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
             latents = get_latents(tokens, d)
-            if cfg.use_tuned_lens:
+            if use_tuned_lens:
                 logits = torch.stack([tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
             else:
                 logits = unemb(latents)

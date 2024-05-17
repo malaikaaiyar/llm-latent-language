@@ -6,6 +6,7 @@ from typing import List
 from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
+import pandas as pd
 
 
 def measure_performance(dataset, model):
@@ -59,9 +60,9 @@ def is_chinese_char(ch):
     Now robust to invalid inputs."""
     try:
         c = ord(ch)
-    except TypeError:
-        return False, "Invalid input: Not a character"
-    
+    except:
+        warnings.warn("is_chinese_char recieved non-char input", category = RuntimeWarning)
+        return False
     # List of tuples, each representing a range of Chinese character code points with labels
     unicode_ranges = [
         (0x4E00, 0x9FFF, 'Common'),
@@ -80,9 +81,8 @@ def is_chinese_char(ch):
     # Check if the character's code point falls within any of the ranges and return the range label
     for start, end, label in unicode_ranges:
         if start <= c <= end:
-            return True, label
-    return False, "Not chinese"
-
+            return True
+    return False
 
 def plot_ci(data, ax, dim=1, **kwargs):
     """
@@ -211,6 +211,7 @@ def get_tok_prefix_ids(string, tokenizer, include_space = False, return_tensor =
         return prefix_ids
     
 
+# %%
 def print_tok(token_ids, tokenizer):
     """
     Print decoded tokens with rotating background colors.
