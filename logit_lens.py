@@ -39,7 +39,6 @@ def get_logits(dataset, model, intervention=None, **kwargs):
     
     device = next(model.parameters()).device
     tokenizer = model.tokenizer
-    tuned_lens = model.tuned_lens
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
     print(f"Kwargs: {kwargs}") 
     def get_latents(tokens, datapoint):
@@ -65,15 +64,15 @@ def get_logits(dataset, model, intervention=None, **kwargs):
             
         latents = [act[:, -1, :] for act in cache.values()]
         latents = torch.stack(latents, dim=1)
-        return latents.float()
+        return latents
     
-    def unemb(latents):
-        """
-        Compute the logits for a given set of latents.
-        """
-        latents_ln = model.ln_final(latents)
-        logits = latents_ln @ model.unembed.W_U.float() + model.unembed.b_U.float()
-        return logits 
+    # def unemb(latents):
+    #     """
+    #     Compute the logits for a given set of latents.
+    #     """
+    #     latents_ln = model.ln_final(latents)
+    #     logits = latents_ln @ model.unembed.W_U.as_type(latents_ln) + model.unembed.b_U.as_type(latents_ln)
+    #     return logits 
     
     all_logits = []
         
@@ -81,11 +80,11 @@ def get_logits(dataset, model, intervention=None, **kwargs):
         for idx, d in tqdm(enumerate(dataset), total=len(dataset)):
             
             tokens = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
-            latents = get_latents(tokens, d).float()
+            latents = get_latents(tokens, d)
             if use_tuned_lens:
-                logits = torch.stack([tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
+                logits = torch.stack([model.tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
             else:
-                logits = unemb(latents)
+                logits = model.unembed(latents)
             
             all_logits.append(logits)
         

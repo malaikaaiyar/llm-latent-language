@@ -184,7 +184,8 @@ for start_layer in range(start_lower,start_upper):
         
         intervene_diff = Intervention(cfg.intervention_func, range(start_layer, end_layer))
         latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
-
+        latent_diff = latent_diff.float()
+        logits_diff = logits_diff.float()
         stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title="diff", cfg=cfg, only_compute_stats=False)
         
         if is_better(stats, best_stats, cfg):
