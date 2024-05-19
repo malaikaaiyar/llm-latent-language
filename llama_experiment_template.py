@@ -200,7 +200,16 @@ for start_layer in range(start_lower,start_upper):
 
 outer_pbar.close()  # Ensure to close the progress bar after the loop completes
 # Save layer_log2 to a pickle file
-pickle.dump(layer_log2, open(cfg.log_file + ".pkl", "wb"))
+
+base_log_file_path = cfg.log_file.rsplit('.', 1)[0]  # Strip off the extension if provided
+
+# Ensure directory exists
+os.makedirs(os.path.dirname(base_log_file_path), exist_ok=True)
+
+with open(base_log_file_path + ".pkl", "wb") as pickle_file:
+    pickle.dump(layer_log2, pickle_file)
+
+# pickle.dump(layer_log2, open(cfg.log_file + ".pkl", "wb"))
 
 log_legend = """
 Measuring 
@@ -211,7 +220,7 @@ lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct
 
 pp = pprint.PrettyPrinter(sort_dicts=False)
 # Save log_legend to the log file
-with open(cfg.log_file + ".log", "a") as f:
+with open(base_log_file_path + ".log", "a") as f:
     f.write("Command: " + ' '.join(sys.argv) + "\n")
     f.write(pp.pformat(asdict(cfg)))
     f.write("\n==============\n")
