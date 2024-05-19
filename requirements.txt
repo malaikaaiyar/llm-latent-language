@@ -2,6 +2,7 @@ sentencepiece
 git+https://github.com/callummcdougall/eindex.git
 eindex
 torch
+tuned_lens
 torchvision
 torch
 torchvision

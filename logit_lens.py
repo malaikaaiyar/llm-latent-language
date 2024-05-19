@@ -41,6 +41,7 @@ def get_logits(dataset, model, intervention=None, **kwargs):
     tokenizer = model.tokenizer
     tuned_lens = model.tuned_lens
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
+    print(f"Kwargs: {kwargs}") 
     def get_latents(tokens, datapoint):
         """
         Get the latents for a given input sequence.
@@ -71,7 +72,7 @@ def get_logits(dataset, model, intervention=None, **kwargs):
         Compute the logits for a given set of latents.
         """
         latents_ln = model.ln_final(latents)
-        logits = latents_ln @ model.unembed.W_U + model.unembed.b_U
+        logits = latents_ln @ model.unembed.W_U.float() + model.unembed.b_U.float()
         return logits 
     
     all_logits = []
@@ -80,7 +81,7 @@ def get_logits(dataset, model, intervention=None, **kwargs):
         for idx, d in tqdm(enumerate(dataset), total=len(dataset)):
             
             tokens = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
-            latents = get_latents(tokens, d)
+            latents = get_latents(tokens, d).float()
             if use_tuned_lens:
                 logits = torch.stack([tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
             else:
@@ -216,6 +217,7 @@ def plot_logit_lens_latents(logits : Float[Tensor, "num_data num_layer vocab"],
                             dataset,
                             **kwargs):
     
+    only_compute_stats = kwargs.get('only_compute_stats', True)
     cfg = kwargs.get('cfg', None)
     dest_lang = cfg.dest_lang
     latent_lang = cfg.latent_lang
@@ -237,7 +239,8 @@ def plot_logit_lens_latents(logits : Float[Tensor, "num_data num_layer vocab"],
                 'p_alt' : alt_probs,
              'lp_diff' : alt_logprobs - correct_logprobs,
              'p_ratio' : alt_probs / correct_probs}
-    plotter(logprobs_list, [latent_lang, dest_lang, latent_lang + "_alt", dest_lang + "_alt"], stats = stats, **kwargs)
+    # if not only_compute_stats:
+    #     plotter(logprobs_list, [latent_lang, dest_lang, latent_lang + "_alt", dest_lang + "_alt"], stats = stats, **kwargs)
     return stats
 
 def latent_heatmap(data, num_bins=250, bin_range=(0, 5), **kwargs):

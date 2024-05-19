@@ -141,6 +141,8 @@ def find_all_tokens(token_str: str, vocab, **kwargs):
         list or torch.Tensor: The list of valid tokens or a tensor of token indices.
 
     """
+    if token_str[0] == '▁':
+        token_str = token_str[1:]
     
     token_add_prefixes = kwargs.get('token_add_prefixes', True)
     token_add_spaces = kwargs.get('token_add_spaces', True)
@@ -180,6 +182,23 @@ def find_all_tokens(token_str: str, vocab, **kwargs):
 #     return (-probas*torch.log2(probas)).sum(dim=-1)
 
 
+def filter_matching_translations(df):
+    # Identify columns that represent language translations by excluding probability columns
+    lang_cols = [col for col in df.columns if '_prob' not in col]
+    
+    # Define a filter function to detect any rows with duplicate translations
+    def has_duplicate_translations(row):
+        # Check the row values for the language columns, if there are duplicates among them
+        translations = row[lang_cols].tolist()
+        return len(set(translations)) != len(translations)
+    
+    # Apply the filter function to identify rows with duplicate translations
+    mask = df.apply(has_duplicate_translations, axis=1)
+    
+    # Filter out the rows where any translations are duplicated
+    return df[~mask]
+    
+
 def gen_translation_task(df, vocab, **kwargs):
     """
     Generate a dataset for training a model using the given dataframe, vocabulary, and configuration.
@@ -203,17 +222,25 @@ def gen_translation_task(df, vocab, **kwargs):
     latent_lang = kwargs.get('latent_lang', 'en')
     k = kwargs.get('num_multi_shot', 1)
 
+    seed = kwargs.get('seed', 42)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
     dataset = []
     for ind in tqdm(range(len(df))):
         df = df.reset_index(drop=True)
         temp = df[df.index!=ind]
         sample = pd.concat([temp.sample(k), df[df.index==ind]], axis=0)
         prompt = ""
+        src_space = "" if src_lang == "zh" else " "
+        dest_space = "" if dest_lang == "zh" else " "
         for idx, (df_idx, row) in enumerate(sample.iterrows()):
             if idx < k-1:
                 prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "{row[dest_lang]}"\n'
             elif idx == k-1:
                 prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "'
+                # if dest_lang == 'zh':
+                #     prompt += ' '
                 in_str, out_str, latent_str = row[src_lang], row[dest_lang], row[latent_lang]
                 out_ids = find_all_tokens(out_str, vocab, **kwargs)
                 latent_ids = find_all_tokens(latent_str, vocab, **kwargs)
