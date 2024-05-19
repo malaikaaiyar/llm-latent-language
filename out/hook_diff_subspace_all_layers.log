@@ -1,0 +1,7 @@
+Measuring hook_diff_subspace with scale_coeff=1
+Search over all layers (i,j) with 0<= i < j <= 31
+
+Measuring
+lp_out/p_out : logprobs/probs of correct answer
+lp_alt/p_alt logprobs/probs of alternate answer
+lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct

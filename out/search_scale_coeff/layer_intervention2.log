@@ -1,0 +1,9 @@
+Searching over layers to perform intervention hook_diff_subspace on
+layer start_low, start_high = (19,21)
+end_low, end_high = (27,31)
+scale_coeff = (0, 0.3, 0.5, 1.0, 2.0, 3.0)
+
+Measuring
+lp_out/p_out : logprobs/probs of correct answer
+lp_alt/p_alt logprobs/probs of alternate answer
+lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct

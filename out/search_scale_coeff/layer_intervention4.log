@@ -1,0 +1,4 @@
+Searching over layers to perform intervention hook_diff_subspace on
+layer start_low, start_high = (16,21)
+end_low, end_high = (27,31)
+scale_coeff = (0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5)
