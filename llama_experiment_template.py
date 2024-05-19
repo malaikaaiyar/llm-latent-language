@@ -228,6 +228,9 @@ with open(base_log_file_path + ".log", "a") as f:
     f.write(intervene_diff.description)
     f.write("\n==============\n")
     f.write(log_legend)
+    f.write("\n==============\n")
+    f.write(f"size of dataset: {len(dataset)}")
+    f.write(f"size of correct dataset: {len(correct_dataset)}")
 
 print("Done!")
 

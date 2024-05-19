@@ -236,11 +236,11 @@ def gen_translation_task(df, vocab, **kwargs):
         dest_space = "" if dest_lang == "zh" else " "
         for idx, (df_idx, row) in enumerate(sample.iterrows()):
             if idx < k-1:
-                prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "{row[dest_lang]}"\n'
+                prompt += f'{lang2name[src_lang]}: "{src_space}{row[src_lang]}" - {lang2name[dest_lang]}: "{dest_space}{row[dest_lang]}"\n'
             elif idx == k-1:
-                prompt += f'{lang2name[src_lang]}: "{row[src_lang]}" - {lang2name[dest_lang]}: "'
-                # if dest_lang == 'zh':
-                #     prompt += ' '
+                prompt += f'{lang2name[src_lang]}: "{src_space}{row[src_lang]}" - {lang2name[dest_lang]}: "'
+                if dest_lang == 'zh':
+                    prompt += ' '
                 in_str, out_str, latent_str = row[src_lang], row[dest_lang], row[latent_lang]
                 out_ids = find_all_tokens(out_str, vocab, **kwargs)
                 latent_ids = find_all_tokens(latent_str, vocab, **kwargs)
