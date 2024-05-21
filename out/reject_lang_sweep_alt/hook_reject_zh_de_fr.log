@@ -1,0 +1,60 @@
+Command: llama_experiment_template.py --use_tuned_lens False --intervention_correct_latent_space False --log_file out/reject_lang_sweep_alt/hook_reject_zh_de_fr --src_lang zh --dest_lang fr --latent_lang de
+{'seed': 42,
+ 'src_lang': 'zh',
+ 'dest_lang': 'fr',
+ 'latent_lang': 'de',
+ 'model_size': '7b',
+ 'model_name': 'meta-llama/Llama-2-7b-hf',
+ 'single_token_only': False,
+ 'multi_token_only': False,
+ 'out_dir': './visuals',
+ 'hf_token': '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',
+ 'dataset_path': './data/synth_llama2',
+ 'debug': True,
+ 'num_multi_shot': 5,
+ 'token_add_spaces': True,
+ 'token_add_leading_byte': False,
+ 'token_add_prefixes': False,
+ 'dataset_filter_correct': True,
+ 'use_tuned_lens': False,
+ 'intervention_correct_latent_space': False,
+ 'steer_scale_coeff': 1.0,
+ 'start_layer_low': 0,
+ 'start_layer_high': 32,
+ 'end_layer_low': 0,
+ 'end_layer_high': 32,
+ 'intervention_func': 'hook_reject_subspace',
+ 'log_file': 'out/reject_lang_sweep_alt/hook_reject_zh_de_fr',
+ 'metric': 'p_alt',
+ 'metric_goal': 'max'}
+==============
+def hook_reject_subspace(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids : Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
+    intervention_correct_latent_space : bool = True,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    # modify attn_pattern (can be inplace)
+    if intervention_correct_latent_space:
+        subspace = model.unembed.W_U.T[latent_ids]
+    else:
+        subspace = model.unembed.W_U.T[alt_latent_ids]
+        
+    last_tblock = resid[:, -1]
+    # subspace = W_U.T[latent_tok_ids]
+    last_tblock = last_tblock - proj(last_tblock.float(), subspace.float())
+    resid[:, -1] = last_tblock
+    return resid
+
+==============
+
+Measuring 
+lp_out/p_out : logprobs/probs of correct answer
+lp_alt/p_alt logprobs/probs of alternate answer
+lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct
+
+==============
+size of dataset: 54size of correct dataset: 24
