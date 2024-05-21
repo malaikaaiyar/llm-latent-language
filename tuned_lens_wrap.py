@@ -65,7 +65,7 @@ class BatchTunedLens(nn.Module):
             return self.unembed(new_h)
 
 
-def load_tuned_lens(model, zero_last_lens=True):
+def load_tuned_lens(model):
     """
     Load a tuned lens model.
 
@@ -82,9 +82,6 @@ def load_tuned_lens(model, zero_last_lens=True):
         model.config.name_or_path = model.cfg.tokenizer_name
 
     tuned_lens = TunedLens.from_model_and_pretrained(model)
-    if zero_last_lens:
-        tuned_lens.layer_translators[-1].weight.zero_()
-        tuned_lens.layer_translators[-1].bias.zero_()
     tuned_lens.to(device)
     return tuned_lens        
 

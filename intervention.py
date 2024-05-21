@@ -6,6 +6,7 @@ from transformer_lens.hook_points import HookPoint
 from dq_utils import proj
 from beartype import beartype
 import inspect
+import re
 # class Intervention:
 #     def __init__(self, func: Callable[..., Tensor], layers: List[int]):
 #         self.func = func
@@ -44,28 +45,6 @@ class Intervention:
 
 # Example usage assuming hook functions are defined and available globally
 # hook_reject_subspace is supposed to be a previously defined function
-
-
-def hook_reject_subspace(
-    resid: Float[Tensor, "batch seq dmodel"],
-    hook: HookPoint,
-    model,
-    latent_ids : Int[Tensor, "num_latent_tokens"] = None,
-    alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
-    intervention_correct_latent_space : bool = True,
-    **kwargs
-) -> Float[Tensor, "batch seq dmodel"]:
-    # modify attn_pattern (can be inplace)
-    if intervention_correct_latent_space:
-        subspace = model.unembed.W_U.T[latent_ids]
-    else:
-        subspace = model.unembed.W_U.T[alt_latent_ids]
-        
-    last_tblock = resid[:, -1]
-    # subspace = W_U.T[latent_tok_ids]
-    last_tblock = last_tblock - proj(last_tblock.float(), subspace.float())
-    resid[:, -1] = last_tblock
-    return resid
 
 def hook_move_subspace(
     resid: Float[Tensor, "batch seq dmodel"],
@@ -139,4 +118,113 @@ def hook_diff_subspace(
     proj_latent = proj(v.float(), subspace_latent.float()).half()
     #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
     resid[:, -1] =  v - proj_latent + steer_scale_coeff * torch.linalg.norm(proj_latent) * (alt_latent_vec - latent_vec)
+    return resid
+
+
+def hook_reject_subspace(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids : Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
+    intervention_correct_latent_space : bool = True,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    # modify attn_pattern (can be inplace)
+    if intervention_correct_latent_space:
+        subspace = model.unembed.W_U.T[latent_ids]
+    else:
+        subspace = model.unembed.W_U.T[alt_latent_ids]
+        
+    last_tblock = resid[:, -1]
+    # subspace = W_U.T[latent_tok_ids]
+    last_tblock = last_tblock - proj(last_tblock.float(), subspace.float())
+    resid[:, -1] = last_tblock
+    return resid
+
+def hook_reject_subspace_v2(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids : Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
+    intervention_correct_latent_space : bool = True,
+    cache : Dict = None,
+    use_reverse_lens : bool = False,
+    rev_lens_scale : float = None,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    # modify attn_pattern (can be inplace)
+    
+     # Define the regular expression pattern
+
+    idx = latent_ids if intervention_correct_latent_space else alt_latent_ids
+    
+    if use_reverse_lens:
+        #assert cache is not None, "cache required for reverse_lens"
+        assert rev_lens_scale is not None, "rev_lens_scale required for reverse_lens"
+        pattern = r'^blocks\.(\d+)\.hook_resid_post$'
+        match = re.match(pattern, hook.name)
+        if match:
+            layer = int(match.group(1))
+        else:
+            raise ValueError(f"String '{hook.name}' no match 'blocks.<number>.hook_resid_post'")
+        #print(f"hello! I'm here! {rev_lens_scale}")
+        subspace = model.reverse_lens(idx, layer, rev_lens_scale, use_logits=False)
+        
+    else:
+        subspace = model.unembed.W_U.T[idx]
+        
+    last_tblock = resid[:, -1]
+    # subspace = W_U.T[latent_tok_ids]
+    last_tblock = last_tblock - proj(last_tblock.float(), subspace.float())
+    resid[:, -1] = last_tblock
+    return resid
+
+
+def hook_diff_subspace_v2(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids: Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids: Int[Tensor, "num_alt_latent_tokens"] = None,
+    cache : Dict = None,
+    use_reverse_lens : bool = False,
+    rev_lens_scale : float = None,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
+    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    
+    
+    if use_reverse_lens:
+        #assert cache is not None, "cache required for reverse_lens"
+        assert rev_lens_scale is not None, "rev_lens_scale required for reverse_lens"
+        pattern = r'^blocks\.(\d+)\.hook_resid_post$'
+        match = re.match(pattern, hook.name)
+        if match:
+            layer = int(match.group(1))
+        else:
+            raise ValueError(f"String '{hook.name}' no match 'blocks.<number>.hook_resid_post'")
+        #print(f"hello! I'm here! {rev_lens_scale}")
+        subspace_alt_latent = model.reverse_lens(latent_ids, layer, rev_lens_scale, use_logits=False).squeeze()
+        subspace_latent = model.reverse_lens(alt_latent_ids, layer, rev_lens_scale, use_logits=False).squeeze()
+        
+        simple_subspace_latent = model.unembed.W_U.T[latent_ids].mean(dim=0)
+        simple_subspace_alt_latent = model.unembed.W_U.T[alt_latent_ids].mean(dim=0)
+        simple_diff = (simple_subspace_alt_latent - simple_subspace_latent)
+        
+    else:
+        assert False
+        subspace_latent = model.unembed.W_U.T[latent_ids]
+        subspace_alt_latent = model.unembed.W_U.T[alt_latent_ids]
+    
+    latent_vec = subspace_latent.mean(dim=0)
+    alt_latent_vec = subspace_alt_latent.mean(dim=0)
+    v = resid[:, -1]
+    proj_latent = proj(v.float(), simple_subspace_latent.float()).half()
+    #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
+    diff = (alt_latent_vec - latent_vec)
+    diff = (torch.linalg.norm(simple_diff) / torch.linalg.norm(diff)) * diff
+    resid[:, -1] =  v - proj_latent + 2 * torch.linalg.norm(proj_latent) * diff
     return resid

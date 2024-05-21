@@ -1,5 +1,6 @@
 # %%
 from tracemalloc import start
+from more_itertools import only
 import pandas as pd
 from dataclasses import dataclass, field, asdict
 import numpy as np
@@ -67,8 +68,8 @@ class Config:
     metric : str = 'p_alt'
     metric_goal : str = 'max'
     use_reverse_lens : bool = False
-    rev_lens_scale : float = 2
-    only_compute_stats : bool = True
+    rev_lens_scale : bool = 1
+    only_compute_stats : bool = False
 
 cfg = Config()
 
@@ -80,6 +81,7 @@ try:
     print("Enabling autoreload in IPython.")
     ipython.run_line_magic('load_ext', 'autoreload')
     ipython.run_line_magic('autoreload', '2')
+        
 except Exception as e:
     print(f"Not in an IPython environment: {e}")
     # Parse command line arguments
@@ -112,14 +114,22 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 # tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=False, add_prefix_space=False)
 # tokenizer_vocab = tokenizer.get_vocab()
 # %%
+try: 
+    ipython = get_ipython()
+    # if in jupyter notebook, force variables
+    cfg.use_reverse_lens = True
+    
+except:
+    pass
+
 if 'LOAD_MODEL' not in globals():
     LOAD_MODEL = False
     model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
                                                             device=device, 
                                                             dtype = torch.float16)
-    tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore
-    if cfg.use_tuned_lens:
-        tuned_lens = load_tuned_lens(model).float()
+    tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore    
+    if cfg.use_tuned_lens or cfg.use_reverse_lens:
+        tuned_lens = load_tuned_lens(model)
         model.tuned_lens = tuned_lens
     if cfg.use_reverse_lens:
         reverse_lens = ReverseLens.from_tuned_lens(tuned_lens)
@@ -137,110 +147,48 @@ print(dataset[0]['prompt'])
 measure_performance(correct_dataset, model)
 # %%
 
+torch.cuda.empty_cache()
+
 layer_log2 = {}
+# %%
+scales = []
+for d in tqdm(dataset):
+    tok = model.tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
+    output, cache = model.run_with_cache(tok, names_filter = ['ln_final.hook_scale'])
+    scales.append(cache['ln_final.hook_scale'])
 
-start_lower, start_upper = cfg.start_layer_low, cfg.start_layer_high
-end_lower, end_upper = cfg.end_layer_low, cfg.end_layer_high
-#steer_scale_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
-#steer_scale_coeff_list = [1.0]
-
-
-def calculate_iterations(start_lower, start_upper, end_lower, end_upper):
-    if start_upper <= start_lower or end_upper <= end_lower:
-        return 0  # No valid iterations if ranges are non-positive or improperly defined
-
-    # Maximum valid start_layer is start_upper - 1
-    # Minimum valid end_layer is start_layer + 1, which translates to start_lower + 1 for start_lower
-    if end_upper <= start_lower + 1:
-        return 0  # No valid end_layer values if end_upper is less than or equal to start_lower + 1
-
-    # Applying the formula: Summing (end_upper - k - 1) for k from start_lower to start_upper - 1
-    total_iterations = 0
-    for k in range(start_lower, start_upper):
-        if k + 1 < end_upper:  # Ensure that there is at least one valid end_layer
-            total_iterations += (end_upper - (k + 1))
-
-    return total_iterations
-total_iterations = calculate_iterations(start_lower, start_upper, end_lower, end_upper)
-outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
-
-import intervention
-from logit_lens import get_logits, plot_logit_lens_latents
-
-def format_dict_single_line_custom(d):
-    # Create a formatted string from dictionary entries
-    items = [f"{k}: {f'{v:.4f}' if isinstance(v, float) else v}" for k, v in d.items()]
-    # Join all items in a single line
-    return ', '.join(items)
-
-def is_better(stats, best_stats, cfg):
-    if cfg.metric_goal == 'max':
-        return stats[cfg.metric] > best_stats[cfg.metric]
-    else:
-        return stats[cfg.metric] < best_stats[cfg.metric]
-
-if cfg.metric_goal == 'max':
-    best_stats = {cfg.metric: -np.inf}
-else:
-    best_stats = {cfg.metric: np.inf}
-    
-for start_layer in range(start_lower,start_upper):
-    for end_layer in range(end_lower, end_upper):
-        if start_layer >= end_layer:
-            continue
-        
-        intervene_diff = Intervention(cfg.intervention_func, range(start_layer, end_layer))
-        latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
-        latent_diff = latent_diff.float()
-        logits_diff = logits_diff.float()
-        stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title="diff", cfg=cfg, only_compute_stats=False)
-        
-        if is_better(stats, best_stats, cfg):
-            print("==========!!!!!==========")
-            new_best_msg = f"NEW BEST STATS: start_layer={start_layer}, end_layer={end_layer}, {format_dict_single_line_custom(stats)}"
-            print("==========!!!!!==========")
-            tqdm.write(new_best_msg)  # Using tqdm.write to avoid interference with the progress bar
-            outer_pbar.set_description(f"")
-            best_stats = stats
-        else:
-            outer_pbar.set_description(f"Trying: {format_dict_single_line_custom(stats)}")
-        outer_pbar.update(1)  # Increment the progress bar after each inner iteration
-        layer_log2[(start_layer, end_layer)] = stats
+# %%
 
 
-outer_pbar.close()  # Ensure to close the progress bar after the loop completes
-# Save layer_log2 to a pickle file
 
-base_log_file_path = cfg.log_file.rsplit('.', 1)[0]  # Strip off the extension if provided
-
-# Ensure directory exists
-os.makedirs(os.path.dirname(base_log_file_path), exist_ok=True)
-
-with open(base_log_file_path + ".pkl", "wb") as pickle_file:
-    pickle.dump(layer_log2, pickle_file)
-
-# pickle.dump(layer_log2, open(cfg.log_file + ".pkl", "wb"))
-
-log_legend = """
-Measuring 
-lp_out/p_out : logprobs/probs of correct answer
-lp_alt/p_alt logprobs/probs of alternate answer
-lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct
-"""
-
-pp = pprint.PrettyPrinter(sort_dicts=False)
-# Save log_legend to the log file
-with open(base_log_file_path + ".log", "a") as f:
-    f.write("Command: " + ' '.join(sys.argv) + "\n")
-    f.write(pp.pformat(asdict(cfg)))
-    f.write("\n==============\n")
-    f.write(intervene_diff.description)
-    f.write("\n==============\n")
-    f.write(log_legend)
-    f.write("\n==============\n")
-    f.write(f"size of dataset: {len(dataset)}")
-    f.write(f"size of correct dataset: {len(correct_dataset)}")
-
-print("Done!")
+from logit_lens import plot_logit_lens_latents
+layers_range = range(20, 31)
+# %%
+cfg.use_reverse_lens = False
+cfg.intervention_func = "hook_diff_subspace"
+cfg_dict = asdict(cfg)
+intervene_diff = Intervention(cfg.intervention_func, layers_range)
+latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
+latent_diff = latent_diff.float()
+logits_diff = logits_diff.float()
+stats = plot_logit_lens_latents(logits_diff, correct_dataset, only_compute_stats = False, **cfg_dict, title="diff", cfg=cfg, )
+latent_heatmap(latent_diff, **cfg_dict, title="diff", cfg=cfg)
+# %%
+from logit_lens import plot_logit_lens_latents, get_logits, latent_heatmap
+best_rev = {}
+for steer_scale_coeff in torch.arange(0,1,0.1):
+    rev_lens_scale = 2
+    cfg.use_reverse_lens = True
+    cfg.rev_lens_scale = rev_lens_scale
+    cfg.steer_scale_coeff = steer_scale_coeff
+    cfg.intervention_func = "hook_diff_subspace_v2"
+    cfg_dict = asdict(cfg)
+    intervene_diff = Intervention(cfg.intervention_func, layers_range)
+    latent_diff_rev, logits_diff_rev = get_logits(correct_dataset, model, intervention=intervene_diff, **cfg_dict)
+    latent_diff_rev = latent_diff_rev.float()
+    logits_diff_rev = logits_diff_rev.float()
+    stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title=f"reject {rev_lens_scale=}", cfg=cfg, only_compute_state = False)
+    best_rev[rev_lens_scale] = stats
+    latent_heatmap(latent_diff_rev, **cfg_dict, title=f"reject {rev_lens_scale=} scale_coeff {steer_scale_coeff}", cfg=cfg, bin_range = (0,10))
 
 # %%

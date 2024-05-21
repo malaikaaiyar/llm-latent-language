@@ -27,15 +27,17 @@ def measure_performance(dataset, model):
 
 def proj(x : Float[Tensor, "... dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "... dmodel"]:
     # Computes the projection of x onto the subspace spanned by the columns of Y
-    Y = Y.transpose(-2, -1) #(dmodel, numvec) #require column vectors
+    if Y.dim() == 1:
+        Y = Y.unsqueeze(0)
+    Y = Y.mT #(dmodel, numvec) #require column vectors
     # Solve the linear system (Y^T @ Y) @ c = Y^T @ x
     # c is the coefficients of the projection of x onto the subspace spanned by the columns of Y
     # so the projection of x onto the subspace spanned by the columns of Y is Y @ c
     if x.ndim == 1:
         x = x.unsqueeze(0)
     
-    c = torch.linalg.solve(Y.transpose(-2, -1)  @ Y, (x @ Y).transpose(-2, -1))    
-    proj_x = (Y @ c).transpose(-2, -1) 
+    c = torch.linalg.solve(Y.mT  @ Y, (x @ Y).mT)    
+    proj_x = (Y @ c).mT 
     return proj_x.squeeze()
 
 def entropy(probas):

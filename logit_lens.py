@@ -1,5 +1,6 @@
 # %%
 
+from sympy import use
 import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformer_lens import HookedTransformer, utils
@@ -40,6 +41,14 @@ def get_logits(dataset, model, intervention=None, **kwargs):
     device = next(model.parameters()).device
     tokenizer = model.tokenizer
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
+    return_float = kwargs.get('return_float', False)
+    
+    use_reverse_lens = kwargs.get('use_reverse_lens', False)
+    if use_reverse_lens:
+        rev_lens_scale = kwargs.get('rev_lens_scale', -1)
+        assert rev_lens_scale != -1, "Please provide a valid scale for the reverse lens."
+        print(f"Using reverse lens with scale: {rev_lens_scale}")
+    
     print(f"Kwargs: {kwargs}") 
     def get_latents(tokens, datapoint):
         """
@@ -53,6 +62,9 @@ def get_logits(dataset, model, intervention=None, **kwargs):
             torch.Tensor: The latents for the input sequence.
         """
         all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
+        hook_scale = ['unembed.final_norm.hook_scale']
+        hookpoint_names_filter = hook_scale + all_post_resid
+        
         
         if intervention is None:
             fwd_hooks = []
@@ -60,7 +72,7 @@ def get_logits(dataset, model, intervention=None, **kwargs):
             fwd_hooks = intervention.fwd_hooks(model, **datapoint, **kwargs)
                 
         with model.hooks(fwd_hooks=fwd_hooks):
-            output, cache = model.run_with_cache(tokens, names_filter=all_post_resid)
+            output, cache = model.run_with_cache(tokens, names_filter=hookpoint_names_filter)
             
         latents = [act[:, -1, :] for act in cache.values()]
         latents = torch.stack(latents, dim=1)
@@ -89,6 +101,11 @@ def get_logits(dataset, model, intervention=None, **kwargs):
             all_logits.append(logits)
         
     all_logits = torch.stack(all_logits)
+    
+    if return_float:
+        all_logits = all_logits.float()
+        latents = latents.float()
+    
     return latents.squeeze(), all_logits.squeeze()
 
 # @torch.no_grad
@@ -214,9 +231,10 @@ def plotter(logprobs_list, label_list, **kwargs):
 
 def plot_logit_lens_latents(logits : Float[Tensor, "num_data num_layer vocab"], 
                             dataset,
+                            only_compute_stats = True,
                             **kwargs):
     
-    only_compute_stats = kwargs.get('only_compute_stats', True)
+    #only_compute_stats = kwargs.get('only_compute_stats', True)
     cfg = kwargs.get('cfg', None)
     dest_lang = cfg.dest_lang
     latent_lang = cfg.latent_lang
@@ -238,8 +256,8 @@ def plot_logit_lens_latents(logits : Float[Tensor, "num_data num_layer vocab"],
                 'p_alt' : alt_probs,
              'lp_diff' : alt_logprobs - correct_logprobs,
              'p_ratio' : alt_probs / correct_probs}
-    # if not only_compute_stats:
-    #     plotter(logprobs_list, [latent_lang, dest_lang, latent_lang + "_alt", dest_lang + "_alt"], stats = stats, **kwargs)
+    #if not only_compute_stats:
+    #plotter(logprobs_list, [latent_lang, dest_lang, latent_lang + "_alt", dest_lang + "_alt"], stats = stats, **kwargs)
     return stats
 
 def latent_heatmap(data, num_bins=250, bin_range=(0, 5), **kwargs):
@@ -257,7 +275,7 @@ def latent_heatmap(data, num_bins=250, bin_range=(0, 5), **kwargs):
     """
     title = kwargs.get('title', None)
     
-    data_np = data.numpy()
+    data_np = data.cpu().numpy()
     
     # Calculate histograms for each row
     histograms = []
@@ -274,8 +292,8 @@ def latent_heatmap(data, num_bins=250, bin_range=(0, 5), **kwargs):
     cbar = plt.colorbar(label='Density', norm=LogNorm())
     cbar.set_label('Log Density')
     plt.title(title)
-    plt.ylabel('Histogram Bin')
-    plt.xlabel('Layer Number')
+    plt.ylabel('Activation Magnitude')
+    plt.xlabel('Layer')
     plt.show()
 
 
