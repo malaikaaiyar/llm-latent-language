@@ -55,7 +55,7 @@ class Config:
     token_add_leading_byte: bool = False
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
-    use_tuned_lens : bool = True
+    use_tuned_lens : bool = False
     intervention_correct_latent_space : bool = True
     steer_scale_coeff : float = 1.0
     start_layer_low : int = 0
@@ -193,7 +193,7 @@ for start_layer in range(start_lower,start_upper):
         latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
         latent_diff = latent_diff.float()
         logits_diff = logits_diff.float()
-        stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title="diff", cfg=cfg, only_compute_stats=False)
+        stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title="diff", cfg=cfg)
         
         if is_better(stats, best_stats, cfg):
             print("==========!!!!!==========")

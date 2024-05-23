@@ -120,6 +120,25 @@ def hook_diff_subspace(
     resid[:, -1] =  v - proj_latent + steer_scale_coeff * torch.linalg.norm(proj_latent) * (alt_latent_vec - latent_vec)
     return resid
 
+def hook_only_new_subspace(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids: Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids: Int[Tensor, "num_alt_latent_tokens"] = None,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
+    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    subspace_latent = model.unembed.W_U.T[latent_ids]
+    latent_vec = subspace_latent.mean(dim=0)
+    alt_latent_vec = model.unembed.W_U.T[alt_latent_ids].mean(dim=0)
+    v = resid[:, -1]
+    proj_latent = proj(v.float(), subspace_latent.float()).half()
+    #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
+    resid[:, -1] =  v - proj_latent + steer_scale_coeff * alt_latent_vec
+    return resid
+
 
 def hook_reject_subspace(
     resid: Float[Tensor, "batch seq dmodel"],
