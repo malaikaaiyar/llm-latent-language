@@ -69,6 +69,7 @@ class Config:
     use_reverse_lens : bool = False
     rev_lens_scale : float = 2
     only_compute_stats : bool = True
+    translation_threshold : float = 0.5
 
 cfg = Config()
 
@@ -108,7 +109,6 @@ pd.set_option('display.max_colwidth', None)  # Show full length of data in colum
     
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-
 # tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=False, add_prefix_space=False)
 # tokenizer_vocab = tokenizer.get_vocab()
 # %%
@@ -130,6 +130,7 @@ if 'LOAD_MODEL' not in globals():
 # df_raw_data = gen_data.merge_datasets(df_src, df_dest, tokenizer_vocab, cfg)
 df_raw_data = pd.read_csv(os.path.join(cfg.dataset_path, 'llama2_all_no_space.csv'))
 df_raw_data = gen_data.filter_matching_translations(df_raw_data)
+# %%
 dataset = gen_data.gen_translation_task(df_raw_data, tokenizer_vocab, **cfg_dict)
 correct_dataset = gen_data.filter_correct(dataset, model)
 print(dataset[0]['prompt'])

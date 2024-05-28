@@ -1,6 +1,5 @@
 # %%
 from tracemalloc import start
-from more_itertools import only
 import pandas as pd
 from dataclasses import dataclass, field, asdict
 import numpy as np
@@ -36,6 +35,7 @@ from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
 import intervention
 from intervention import Intervention
 from config_argparse import parse_args
+from llama_merge_csv import construct_dataset
 # %%
 @dataclass
 class Config:
@@ -56,7 +56,7 @@ class Config:
     token_add_leading_byte: bool = False
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
-    use_tuned_lens : bool = True
+    use_tuned_lens : bool = False
     intervention_correct_latent_space : bool = True
     steer_scale_coeff : float = 1.0
     start_layer_low : int = 0
@@ -117,7 +117,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 try: 
     ipython = get_ipython()
     # if in jupyter notebook, force variables
-    cfg.use_reverse_lens = True
+    #cfg.use_reverse_lens = True
     
 except:
     pass
@@ -138,57 +138,23 @@ if 'LOAD_MODEL' not in globals():
 # df_src = pd.read_csv(os.path.join(cfg.dataset_path, cfg.src_lang, 'clean.csv')).reindex()
 # df_dest = pd.read_csv(os.path.join(cfg.dataset_path, cfg.dest_lang, 'clean.csv')).reindex()
 # df_raw_data = gen_data.merge_datasets(df_src, df_dest, tokenizer_vocab, cfg)
-df_raw_data = pd.read_csv(os.path.join(cfg.dataset_path, 'llama2_all_no_space.csv'))
-df_raw_data = gen_data.filter_matching_translations(df_raw_data)
-dataset = gen_data.gen_translation_task(df_raw_data, tokenizer_vocab, **cfg_dict)
-correct_dataset = gen_data.filter_correct(dataset, model)
-print(dataset[0]['prompt'])
-#hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
-measure_performance(correct_dataset, model)
+df_raw_data = construct_dataset(**cfg_dict)
+dataset = gen_data.gen_batched_dataset(df_raw_data, model.tokenizer, **cfg_dict)
 # %%
+from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 
-torch.cuda.empty_cache()
+suffix_toks = dataset['suffixes']
+prefix_toks = dataset['prompt_tok']
+n_suffix = len(suffix_toks)
+prefix_toks = prefix_toks.repeat(n_suffix, 1)
 
-layer_log2 = {}
+kv_cache = HookedTransformerKeyValueCache.init_cache(
+    model.cfg, model.cfg.device, n_suffix
+)
+_, prefix_cache = model.run_with_cache(prefix_toks, past_kv_cache=kv_cache)
+kv_cache.freeze()
+output, cache = model.run_with_cache(suffix_toks, past_kv_cache=kv_cache)
+#with_cache_logits = model(rest_of_tokens, past_kv_cache=kv_cache)
 # %%
-scales = []
-for d in tqdm(dataset):
-    tok = model.tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
-    output, cache = model.run_with_cache(tok, names_filter = ['ln_final.hook_scale'])
-    scales.append(cache['ln_final.hook_scale'])
-
-# %%
-
-
-
-from logit_lens import plot_logit_lens_latents
-layers_range = range(20, 31)
-# %%
-cfg.use_reverse_lens = False
-cfg.intervention_func = "hook_diff_subspace"
-cfg_dict = asdict(cfg)
-intervene_diff = Intervention(cfg.intervention_func, layers_range)
-latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
-latent_diff = latent_diff.float()
-logits_diff = logits_diff.float()
-stats = plot_logit_lens_latents(logits_diff, correct_dataset, only_compute_stats = False, **cfg_dict, title="diff", cfg=cfg, )
-latent_heatmap(latent_diff, **cfg_dict, title="diff", cfg=cfg)
-# %%
-from logit_lens import plot_logit_lens_latents, get_logits, latent_heatmap
-best_rev = {}
-for steer_scale_coeff in torch.arange(0,1,0.1):
-    rev_lens_scale = 2
-    cfg.use_reverse_lens = True
-    cfg.rev_lens_scale = rev_lens_scale
-    cfg.steer_scale_coeff = steer_scale_coeff
-    cfg.intervention_func = "hook_diff_subspace_v2"
-    cfg_dict = asdict(cfg)
-    intervene_diff = Intervention(cfg.intervention_func, layers_range)
-    latent_diff_rev, logits_diff_rev = get_logits(correct_dataset, model, intervention=intervene_diff, **cfg_dict)
-    latent_diff_rev = latent_diff_rev.float()
-    logits_diff_rev = logits_diff_rev.float()
-    stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title=f"reject {rev_lens_scale=}", cfg=cfg, only_compute_state = False)
-    best_rev[rev_lens_scale] = stats
-    latent_heatmap(latent_diff_rev, **cfg_dict, title=f"reject {rev_lens_scale=} scale_coeff {steer_scale_coeff}", cfg=cfg, bin_range = (0,10))
-
+with_cache_logits = model(dataset['suffixes'], past_kv_cache=kv_cache)
 # %%

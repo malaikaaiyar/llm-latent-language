@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import pandas as pd
 from transformers import AutoTokenizer
 from tqdm import tqdm
+from llama_merge_csv import construct_dataset
 # %%
 
 # Get the current working directory
@@ -13,7 +14,132 @@ from tqdm import tqdm
 # os.chdir("/root/llm-latent-language")
 # print(f"Current Working Directory: {os.getcwd()}")
 #lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
-lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文'}
+lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
+
+translation_bank = [
+    {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
+    'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
+    'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
+    'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}},
+    
+    {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
+    'middle': {'zh': '中', 'en': 'middle', 'fr': 'milieu', 'de': 'Mitte', 'ru': 'середина'},
+    'three': {'zh': '三', 'en': 'three', 'fr': 'trois', 'de': 'drei', 'ru': 'три'},
+    'woman': {'zh': '女', 'en': 'woman', 'fr': 'femme', 'de': 'Frau', 'ru': 'женщина'}}
+]
+
+def translation_bank_extract(lang, prompt_bank = 0):
+    return set([v[lang] for k, v in translation_bank[prompt_bank].items()])
+
+def generate_common_suffixes(df, src_lang = None, dest_lang = None, **kwargs):
+    common_suffixes = []
+    src_space = " " if src_lang != 'zh' else ""
+    
+    
+    for src_word in df[src_lang]:
+        src_word = src_word.split('▁')[-1] # Remove leading space token if present
+        suffix = f'{src_space}{src_word}" {lang2name[dest_lang]}: "'
+        common_suffixes.append(suffix)
+    return common_suffixes
+        
+    
+
+def generate_translation_prompt(word, src_lang=None, dest_lang=None, prompt_bank = 0, **kwargs):
+    word = word.split('▁')[-1] if word is not None else None
+        
+    translations = translation_bank[prompt_bank]
+    
+    src_space = " " if src_lang != 'zh' else ""
+    dest_space = " " if dest_lang != 'zh' else ""
+    not_dest_space = " " if dest_lang == 'zh' else ""
+
+    prompt = ""
+    for key, translation in translations.items():
+        prompt += f'{lang2name[src_lang]}: "{src_space}{translation[src_lang]}" {lang2name[dest_lang]}: "{dest_space}{translation[dest_lang]}"\n'
+    
+    if word is None: #only generate common prefix
+        prompt += f'{lang2name[src_lang]}: "'
+    else:
+        prompt += f'{lang2name[src_lang]}: "{src_space}{word}" {lang2name[dest_lang]}: "'
+    
+    # Ensure prompt ends with a space for Chinese
+    # actually, no, we don't want this. It messes up the tokenization
+    # non-zh languages include the space. zh doesn't need the space.
+    # if dest_lang == 'zh':
+    #     prompt += ' '
+    
+    return prompt
+
+def remove_prompt_overlap(df, prompt_bank = 0, src_lang = None, **kwargs):
+    src_words = translation_bank_extract(src_lang, prompt_bank=prompt_bank)
+    if src_lang != 'zh':
+        src_words = [f'▁{word}' for word in src_words]
+    df = df[~df[src_lang].isin(src_words)]
+    df = df.reset_index(drop=True)
+    return df 
+
+
+
+# not as dumb as it looks
+# 1/e chance of getting a derangement
+# so only have to try a few times to get a derangement
+def get_derangement(n):
+    def is_derangement(x):
+        return not (x == torch.arange(len(x))).any()
+    while True:
+        derangement = torch.randperm(n)
+        if is_derangement(derangement):
+            return derangement
+
+
+def gen_batched_dataset(df, tokenizer, **kwargs):
+    
+    src_lang = kwargs.get('src_lang', None)
+    dest_lang = kwargs.get('dest_lang', None)
+    latent_lang = kwargs.get('latent_lang', None)
+    
+    
+    prompt = generate_translation_prompt(None, **kwargs)
+    prompt_tok = tokenizer.encode(prompt, return_tensors='pt')
+    df = remove_prompt_overlap(df, **kwargs)
+    common_suffixes = generate_common_suffixes(df, **kwargs)
+    
+    # idx = get_derangement(len(df))
+    src_tok = torch.LongTensor(tokenizer.convert_tokens_to_ids(df[src_lang]))
+    #alt_src = src_tokens[idx]
+    latent_tok = torch.LongTensor(tokenizer.convert_tokens_to_ids(df[latent_lang]))
+    #alt_latent = latent_tokens[idx]
+    dest_tok =  torch.LongTensor(tokenizer.convert_tokens_to_ids(df[dest_lang]))
+    #alt_dest = dest_tokens[idx]
+    
+    input_ids, attention_mask = tokenizer(common_suffixes, return_tensors='pt', padding=False, truncation=False, add_special_tokens=False).values()
+    debug = kwargs.get('debug', False)
+    if debug:
+        assert (attention_mask == 1).all(), "Attention mask should be all ones, common suffixes should be all same length"
+        assert (input_ids[:, 0] == tokenizer.convert_tokens_to_ids('▁')).all(), "First token should be space token" # id of '▁' is 29871
+        token_len_lookup = {'en' : 6, 'fr' : 7, 'de' : 6, 'zh' : 8, 'ru' : 7}
+        assert len(input_ids[0]) == token_len_lookup[kwargs['dest_lang']], "Prompt should have correct length for given language"
+    suffix_tokens = input_ids[:, 1:] # remove the leading space token
+    out = {
+        'prompt': prompt,
+        'prompt_tok': prompt_tok,
+        'suffixes' : suffix_tokens,
+        'src' : src_tok,
+        'latent' : latent_tok,
+        'dest' : dest_tok,
+        'common_suffixes': common_suffixes,
+        }
+    return out
+    
+# %%
+# from transformers import AutoTokenizer
+# cfg = {'src_lang' : 'fr', 'latent_lang' : 'en' , 'dest_lang' : 'zh'}
+# df = construct_dataset(**cfg)
+# prompt, common_suffixes = gen_batched_dataset(df, **cfg)
+# tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
+
+# %%
+
 
 def keep_single_toks(df, vocab):
         """
@@ -197,7 +323,6 @@ def filter_matching_translations(df):
     
     # Filter out the rows where any translations are duplicated
     return df[~mask]
-    
 
 def gen_translation_task(df, vocab, **kwargs):
     """
@@ -221,6 +346,7 @@ def gen_translation_task(df, vocab, **kwargs):
     dest_lang = kwargs.get('dest_lang', 'zh')
     latent_lang = kwargs.get('latent_lang', 'en')
     k = kwargs.get('num_multi_shot', 1)
+    unique_prompt = kwargs.get('unique_prompt', True)
 
     seed = kwargs.get('seed', 42)
     np.random.seed(seed)
