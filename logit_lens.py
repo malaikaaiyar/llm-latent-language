@@ -21,9 +21,41 @@ import seaborn as sns
 import pandas as pd
 from matplotlib.colors import LogNorm
 import numpy as np
+from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 # %%
 @torch.no_grad
-def get_logits_batched(prompt, df, model, intervention=None, **kwargs):
+def run_with_shared_prefix(prefix_toks : Int[Tensor, "seq"], 
+                           suffix_toks : Int[Tensor, "batch seq2"], 
+                           model, 
+                           fwd_hooks = []):
+    
+    n = len(suffix_toks)
+    kv_cache = HookedTransformerKeyValueCache.init_cache(
+        model.cfg, model.cfg.device, 1
+    )
+    model(prefix_toks, past_kv_cache=kv_cache)
+    kv_cache.freeze()
+
+    # repeat the cache for every suffix
+    # using expand to avoid copying the data
+    for entry in kv_cache:
+        entry.past_keys = entry.past_keys.expand(n, -1, -1, -1)
+        entry.past_values = entry.past_values.expand(n, -1, -1, -1)
+    kv_cache.previous_attention_mask = kv_cache.previous_attention_mask.expand(n, -1)
+    
+    hookpoint_names_filter = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
+    
+    with model.hooks(fwd_hooks=fwd_hooks):
+        output, cache = model.run_with_cache(suffix_toks, names_filter=hookpoint_names_filter, past_kv_cache=kv_cache)
+    return output, cache
+    
+
+@torch.no_grad
+def get_logits_batched(prefix_toks : Int[Tensor, "seq"], 
+                       suffix_toks : Int[Tensor, "batch seq2"],
+                       model, 
+                       intervention=None, 
+                       **kwargs):
     """
     Compute the logits for a given dataset using a language model.
 
@@ -48,63 +80,24 @@ def get_logits_batched(prompt, df, model, intervention=None, **kwargs):
     use_reverse_lens = kwargs.get('use_reverse_lens', False)
     assert not use_reverse_lens, "Reverse lens not supported for batched logits."
     
-    # #print(f"Kwargs: {kwargs}") 
-    # def get_latents(tokens):
-    #     """
-    #     Get the latents for a given input sequence.
-
-    #     Args:
-    #         tokens (torch.Tensor): The input sequence tokens.
-    #         datapoint (object, optional): The datapoint object. Defaults to None.
-
-    #     Returns:
-    #         torch.Tensor: The latents for the input sequence.
-    #     """
-    #     all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
-    #     hook_scale = ['unembed.final_norm.hook_scale']
-    #     hookpoint_names_filter = hook_scale + all_post_resid
-        
-        
-    #     if intervention is None:
-    #         fwd_hooks = []
-    #     else:
-    #         fwd_hooks = intervention.fwd_hooks(model, **datapoint, **kwargs)
-                
-    #     with model.hooks(fwd_hooks=fwd_hooks):
-    #         output, cache = model.run_with_cache(tokens, names_filter=hookpoint_names_filter)
+    fwd_hooks = [] if intervention is None else intervention.fwd_hooks(model, **kwargs)
             
-    #     latents = [act[:, -1, :] for act in cache.values()]
-    #     latents = torch.stack(latents, dim=1)
-    #     return latents
+    _, cache = run_with_shared_prefix(prefix_toks, suffix_toks, model, fwd_hooks=fwd_hooks)
     
-    # def unemb(latents):
-    #     """
-    #     Compute the logits for a given set of latents.
-    #     """
-    #     latents_ln = model.ln_final(latents)
-    #     logits = latents_ln @ model.unembed.W_U.as_type(latents_ln) + model.unembed.b_U.as_type(latents_ln)
-    #     return logits 
+    latents = [act[:, -1, :] for act in cache.values()]
+    latents = torch.stack(latents, dim=1) #(batch, num_layers, d_model)
+
     
-    #src_tokens =
-        
-    for idx, d in tqdm(enumerate(dataset), total=len(dataset)):
-        
-        tokens = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
-        latents = get_latents(tokens, d)
-        if use_tuned_lens:
-            logits = torch.stack([model.tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
-        else:
-            logits = model.unembed(latents)
-        
-        all_logits.append(logits)
-    
-    all_logits = torch.stack(all_logits)
+    if use_tuned_lens:
+        logits = torch.stack([model.tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
+    else:
+        logits = model.unembed(latents)
     
     if return_float:
-        all_logits = all_logits.float()
+        logits = logits.float()
         latents = latents.float()
     
-    return latents.squeeze(), all_logits.squeeze()
+    return latents, logits
 # %%
 @torch.no_grad
 def get_logits(dataset, model, intervention=None, **kwargs):

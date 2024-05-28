@@ -1,4 +1,7 @@
 # %%
+%load_ext autoreload
+%autoreload 2
+# %%
 from tracemalloc import start
 import pandas as pd
 from dataclasses import dataclass, field, asdict
@@ -31,7 +34,7 @@ from utils import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
 from reverse_tuned_lens import ReverseLens
 from dq_utils import proj, entropy, plot_ci, is_chinese_char, measure_performance
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap, get_logits_batched
 import intervention
 from intervention import Intervention
 from config_argparse import parse_args
@@ -70,6 +73,7 @@ class Config:
     use_reverse_lens : bool = False
     rev_lens_scale : bool = 1
     only_compute_stats : bool = False
+    cache_prefix : bool = True
 
 cfg = Config()
 
@@ -142,19 +146,11 @@ df_raw_data = construct_dataset(**cfg_dict)
 dataset = gen_data.gen_batched_dataset(df_raw_data, model.tokenizer, **cfg_dict)
 # %%
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
-
+from logit_lens import get_logits_batched
 suffix_toks = dataset['suffixes']
 prefix_toks = dataset['prompt_tok']
-n_suffix = len(suffix_toks)
-prefix_toks = prefix_toks.repeat(n_suffix, 1)
 
-kv_cache = HookedTransformerKeyValueCache.init_cache(
-    model.cfg, model.cfg.device, n_suffix
-)
-_, prefix_cache = model.run_with_cache(prefix_toks, past_kv_cache=kv_cache)
-kv_cache.freeze()
-output, cache = model.run_with_cache(suffix_toks, past_kv_cache=kv_cache)
+latents, logits = get_logits_batched(prefix_toks, suffix_toks, model, **cfg_dict)
 #with_cache_logits = model(rest_of_tokens, past_kv_cache=kv_cache)
 # %%
-with_cache_logits = model(dataset['suffixes'], past_kv_cache=kv_cache)
 # %%
