@@ -132,11 +132,11 @@ def gen_batched_dataset(df, tokenizer, **kwargs):
     return out
     
 # %%
-from transformers import AutoTokenizer
-cfg = {'src_lang' : 'fr', 'latent_lang' : 'en' , 'dest_lang' : 'zh'}
-df = construct_dataset(**cfg)
-prompt, common_suffixes = gen_batched_dataset(df, **cfg)
-tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
+# from transformers import AutoTokenizer
+# cfg = {'src_lang' : 'fr', 'latent_lang' : 'en' , 'dest_lang' : 'zh'}
+# df = construct_dataset(**cfg)
+# prompt, common_suffixes = gen_batched_dataset(df, **cfg)
+# tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
 
 # %%
 

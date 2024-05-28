@@ -85,7 +85,7 @@ def get_logits_batched(prompt, df, model, intervention=None, **kwargs):
     #     logits = latents_ln @ model.unembed.W_U.as_type(latents_ln) + model.unembed.b_U.as_type(latents_ln)
     #     return logits 
     
-    src_tokens =
+    #src_tokens =
         
     for idx, d in tqdm(enumerate(dataset), total=len(dataset)):
         
