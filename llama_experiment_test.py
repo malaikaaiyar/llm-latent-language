@@ -1,6 +1,5 @@
 # %%
 from tracemalloc import start
-from more_itertools import only
 import pandas as pd
 from dataclasses import dataclass, field, asdict
 import numpy as np
@@ -122,6 +121,8 @@ try:
 except:
     pass
 
+LOAD_MODEL = False
+
 if 'LOAD_MODEL' not in globals():
     LOAD_MODEL = False
     model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
@@ -140,7 +141,9 @@ if 'LOAD_MODEL' not in globals():
 # df_raw_data = gen_data.merge_datasets(df_src, df_dest, tokenizer_vocab, cfg)
 df_raw_data = pd.read_csv(os.path.join(cfg.dataset_path, 'llama2_all_no_space.csv'))
 df_raw_data = gen_data.filter_matching_translations(df_raw_data)
-dataset = gen_data.gen_translation_task(df_raw_data, tokenizer_vocab, **cfg_dict)
+# %%
+
+#dataset = gen_data.gen_translation_task(df_raw_data, tokenizer_vocab, **cfg_dict)
 correct_dataset = gen_data.filter_correct(dataset, model)
 print(dataset[0]['prompt'])
 #hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
