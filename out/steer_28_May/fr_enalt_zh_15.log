@@ -1,0 +1,61 @@
+Command: llama_experiment_template.py --intervention_func hook_only_new_subspace --log_file out/steer_28_May/fr_enalt_zh_15.log --src_lang fr --latent_lang en --dest_lang zh --steer_scale_coeff 15 --intervention_correct_latent_space False
+{'seed': 42,
+ 'src_lang': 'fr',
+ 'dest_lang': 'zh',
+ 'latent_lang': 'en',
+ 'model_size': '7b',
+ 'model_name': 'meta-llama/Llama-2-7b-hf',
+ 'single_token_only': False,
+ 'multi_token_only': False,
+ 'out_dir': './visuals',
+ 'hf_token': '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',
+ 'dataset_path': './data/synth_llama2',
+ 'debug': True,
+ 'num_multi_shot': 5,
+ 'token_add_spaces': True,
+ 'token_add_leading_byte': False,
+ 'token_add_prefixes': False,
+ 'dataset_filter_correct': True,
+ 'use_tuned_lens': False,
+ 'intervention_correct_latent_space': False,
+ 'steer_scale_coeff': 15.0,
+ 'start_layer_low': 0,
+ 'start_layer_high': 32,
+ 'end_layer_low': 0,
+ 'end_layer_high': 32,
+ 'intervention_func': 'hook_only_new_subspace',
+ 'log_file': 'out/steer_28_May/fr_enalt_zh_15.log',
+ 'metric': 'p_alt',
+ 'metric_goal': 'max',
+ 'use_reverse_lens': False,
+ 'rev_lens_scale': 2,
+ 'only_compute_stats': True}
+==============
+def hook_only_new_subspace(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    latent_ids: Int[Tensor, "num_latent_tokens"] = None,
+    alt_latent_ids: Int[Tensor, "num_alt_latent_tokens"] = None,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
+    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    subspace_latent = model.unembed.W_U.T[latent_ids]
+    latent_vec = subspace_latent.mean(dim=0)
+    alt_latent_vec = model.unembed.W_U.T[alt_latent_ids].mean(dim=0)
+    v = resid[:, -1]
+    proj_latent = proj(v.float(), subspace_latent.float()).half()
+    #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
+    resid[:, -1] =  v - proj_latent + steer_scale_coeff * alt_latent_vec
+    return resid
+
+==============
+
+Measuring 
+lp_out/p_out : logprobs/probs of correct answer
+lp_alt/p_alt logprobs/probs of alternate answer
+lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct
+
+==============
+size of dataset: 54size of correct dataset: 39
