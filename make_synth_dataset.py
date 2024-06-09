@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 from matplotlib import pyplot as plt
 import os, sys
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 # === Typing Libraries ===
 from typing import Tuple, List, Optional, Dict, Callable, Iterable, Any
@@ -31,24 +31,31 @@ from utils import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
 from dq_utils import proj, entropy, plot_ci, is_chinese_char, broadcast_kv_cache, printd
 from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from config_argparse import try_parse_args
 __DEBUG__ = True
 # %%
 torch.set_grad_enabled(False)
 @dataclass
 class Config:
     model_name : str = 'gemma-2b'
-    save_dir : str = './data/synth_gemma_2b'
-    model_dtype : torch.dtype = torch.bfloat16
+    #model_name : str = 'meta-llama/Llama-2-7b-hf'
+    #save_dir : str = './data/synth_gemma_2b'
+    #save_dir : str = './data/synth_llama_2_7b_new'
+    save_dir : str = "DUMMY_NAME"
+    #translation_bank_name : str = "llama" # just always use llama
+    model_dtype : torch.dtype = torch.float16
     translation_threshold : float = 0.0
-    batch_size : int = 96
-
-        
-# %%
+    batch_size : int = 128
 
 cfg = Config()
+cfg = try_parse_args(cfg)
+# %%
+
+
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
-                                                            device=device)
+                                                            device=device,
+                                                            dtype=cfg.model_dtype)
 vocab = model.tokenizer.get_vocab()
 # %%
 
@@ -60,22 +67,38 @@ language_labels = {
     'de': 'Deutsch',
     'ru': 'Русский'
 }
-
-
-all_translation_banks = [
     #{'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
-    {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
-    'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
-    'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
-    'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}}]
+
+all_translation_banks = {'gemma' :
+                            {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
+                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
+                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
+                            'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}},
+                        'llama':
+                            {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
+                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
+                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
+                            'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}}
+                        }
+
+# just use the same bank for both
+translation_bank = all_translation_banks['llama']               
     
-translation_bank = all_translation_banks[0]
+lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
+
+# all_translation_bank = [
+#     {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
+#     'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
+#     'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
+#     'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}},
     
 #     {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
 #     'middle': {'zh': '中', 'en': 'middle', 'fr': 'milieu', 'de': 'Mitte', 'ru': 'середина'},
 #     'three': {'zh': '三', 'en': 'three', 'fr': 'trois', 'de': 'drei', 'ru': 'три'},
 #     'woman': {'zh': '女', 'en': 'woman', 'fr': 'femme', 'de': 'Frau', 'ru': 'женщина'}}
 # ]
+    
+
 
 def check_bank_valid(bank):
     """
@@ -91,6 +114,7 @@ def check_bank_valid(bank):
                 
     ids = [vocab.get(x,None) for x in new_toks]
     if None in ids:
+        print(f"Invalid tokens: {ids}, {new_toks}")
         return False
     return True
 
@@ -98,6 +122,19 @@ assert check_bank_valid(translation_bank), f"Translation bank contains invalid t
 
 # %%
 
+def remove_dup_translation(df):
+    # Filter columns list based on columns present in the DataFrame
+    valid_columns = [col for col in language_labels if col in df.columns]
+    
+    # Apply a function across the DataFrame rows
+    #filtered_df = df[df.apply(lambda row: len(set(row[valid_columns])) == len(valid_columns), axis=1)]
+    filtered_df = df[df.apply(lambda row: len(set([str(x).lower() for x in row[valid_columns]])) == len(valid_columns), axis=1)]
+
+    
+    removed_count = len(df) - len(filtered_df)
+    print(f"Removed {removed_count} duplicates for {valid_columns}")
+    
+    return filtered_df
 
 # %%
     
@@ -113,7 +150,7 @@ def translate(src_words,
               dest_lang, 
               model = model, 
               translation_bank = translation_bank, 
-              bs = None, 
+              batch_size = None, 
               debug = False, 
               **kwargs):
     vocab = model.tokenizer.get_vocab()
@@ -121,14 +158,15 @@ def translate(src_words,
     global __DEBUG__
     __DEBUG__ = debug
 
-    if bs is None:
-        bs = len(src_words)
-
+    if batch_size is None:
+        batch_size = len(src_words)
+    bs = batch_size
+    
     threshold = 0
 
     def process_suffix_toks(suffix_toks):
-        if "llama" in model.cfg.model_name:
-            assert torch.all(suffix_toks[:, 0] == vocab("▁")), "LLama tokenizer should prepend space token"
+        if "Llama-2" in model.cfg.model_name:
+            assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
             suffix_toks = suffix_toks[:, 1:]
             
         elif "gemma" in model.cfg.model_name:
@@ -138,8 +176,8 @@ def translate(src_words,
             raise ValueError(f"Check {model.cfg.model_name} tokenization first, add case to make_synth_dataset")
         if debug:
             printd(suffix_toks)
-        return torch.split(suffix_toks, bs, dim=0)
-
+        return suffix_toks
+    
     def run(src_words, src_lang, dest_lang):
         
         all_probs = []
@@ -172,8 +210,10 @@ def translate(src_words,
             suffix_toks = raw_suffix_toks
         
         suffix_toks = suffix_toks.to(device)
-        suffix_toks_batched = process_suffix_toks(suffix_toks)
-        runner = tqdm(suffix_toks_batched, total=len(suffix_toks_batched), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
+        suffix_toks = process_suffix_toks(suffix_toks)
+        suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
+        
+        runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
         
         for batch in runner:
             broadcast_kv_cache(kv_cache, len(batch))
@@ -184,17 +224,18 @@ def translate(src_words,
             
             all_probs.append(max_probs)
             all_toks.append(max_tokens)
+            runner.update(len(batch))
             
         all_probs = torch.cat(all_probs, dim=0)
         all_toks = torch.cat(all_toks, dim=0)
         return all_probs, all_toks, suffix_toks, good_idx
 
-    if debug:
-        for src_word in src_words:
-            if is_chinese_char(src_word):
-                assert src_word in vocab, f"Input zh string {src_word} not in vocabulary"
-            else:
-                assert "▁" + src_word in vocab, f"Input non-zh string {src_word} not in vocabulary"
+    # if debug:
+    #     for src_word in src_words:
+    #         if is_chinese_char(src_word):
+    #             assert src_word in vocab, f"Input zh string {src_word} not in vocabulary"
+    #         else:
+    #             assert "▁" + src_word in vocab, f"Input non-zh string {src_word} not in vocabulary"
     
     to_dest_probs, to_dest_tokens, src_suffix_toks, good_idx = run(src_words, src_lang, dest_lang)
     
@@ -232,55 +273,74 @@ def translate(src_words,
     }
 
     df = pd.DataFrame(data)
+    df = remove_dup_translation(df)
     return df
 
 # df = translate(zh_tokens, "zh", "en", bs=128, debug=False, threshold =0)
 # df
 # %%
+# %%
+def en_tokens():
+    en_words = []
+    with open("./data/dict/en_dict.txt") as en_dict:
+        for word in tqdm(en_dict):
+            word = word.strip()
+            if "▁" + word in vocab:
+                en_words.append("▁" + word)
+    print(f"Found {len(en_words)} in vocabulary from dictionary")
+    return en_words
+# %%
 
+
+# %%
 def auto_translate(translation_threshold = 0.5, **kwargs):
 
-    zh_tokens = []
-    for key in vocab:
-        if len(key) == 1 and is_chinese_char(key):
-            zh_tokens.append(key)
+    en_words = en_tokens()
+    
 
     bank = {}
 
     print(f"Translation Bank: {translation_bank}")
 
 
-    zf_to_en = translate(zh_tokens, 'zh', 'en', **kwargs)
-    #zf_to_en.rename(columns={'src_word': 'zh', 'dest_word': 'en', 'dest_prob': 'zh_to_en_prob', 'rev_prob': 'en_to_zh_prob'}, inplace=True)
-    en_to_fr = translate(list(zf_to_en['en']), 'en', 'fr', **kwargs)
-    en_to_de = translate(list(zf_to_en['en']), 'en', 'de', **kwargs)
-    en_to_ru = translate(list(zf_to_en['en']), 'en', 'ru', **kwargs)
+    en_to_zh = translate(en_words, 'en', 'zh', **kwargs)
+    en_to_fr = translate(en_words, 'en', 'fr', **kwargs)
+    en_to_de = translate(en_words, 'en', 'de', **kwargs)
+    en_to_ru = translate(en_words, 'en', 'ru', **kwargs)
 
-    all = pd.merge(zf_to_en, en_to_fr, on='en', how='inner')
-    all = pd.merge(all, en_to_de, on='en', how='inner')
-    all = pd.merge(all, en_to_ru, on='en', how='inner')
+  
+    #filtered_df.to_csv(os.path.join(save_dir, 'llama2_filtered_30_tol.csv'), index=False)
+    
+    bank["en_to_zh"] = en_to_zh
+    bank["en_to_fr"] = en_to_fr
+    bank["en_to_de"] = en_to_de
+    bank["en_to_ru"] = en_to_ru
+    
+    
+    
+    all = pd.merge(en_to_zh, en_to_fr, on=['en','en_tok'], how='inner')
+    all = pd.merge(all, en_to_de, on=['en','en_tok'], how='inner')
+    all = pd.merge(all, en_to_ru, on=['en','en_tok'], how='inner')
 
     print(f"Merged size {len(all)}")
     print(all[:10])
     # Save filtered_df dataframe
-    
+    all = remove_dup_translation(all)
     mask = all.filter(like='_prob').gt(translation_threshold).all(axis=1)
     # Filter the DataFrame using the mask
     filtered_df = all[mask]
     filtered_df.reset_index(drop=True, inplace=True)
-    #filtered_df.to_csv(os.path.join(save_dir, 'llama2_filtered_30_tol.csv'), index=False)
     
-    bank["zh_to_en"] = zf_to_en
-    bank["en_to_fr"] = en_to_fr
-    bank["en_to_de"] = en_to_de
-    bank["en_to_ru"] = en_to_ru
+    
+    
     bank["all"] = all
     bank["filtered"] = filtered_df
 
     return bank
-
-lang_codes = ['zh', 'fr', 'de', 'ru']
-
+# %%
+# en_words = en_tokens()
+# en_to_zh = translate(en_words, 'en', 'zh', batch_size=1)
+#en_to_zh = translate(en_words[:200], 'en', 'zh', batch_size=64, debug=True)
 # %%
 
 def main(save_dir = None, **kwargs):
@@ -290,11 +350,7 @@ def main(save_dir = None, **kwargs):
     bank = auto_translate(**kwargs)
     
     for key, df in tqdm(bank.items()):
-        
-        # Remove rows with duplicate entries
-        lang_present = [col for col in df.columns if col in lang_codes]
-        df.drop_duplicates(subset=lang_present, inplace=True)
-        df.to_csv(os.path.join(save_dir, f'{key}.csv', mode = "w", index=False))
+        df.to_csv(os.path.join(save_dir, f'{key}.csv'), mode = "w", index=False)
 # %%
 cfg_dict = asdict(cfg)
 main(**cfg_dict)
