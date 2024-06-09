@@ -16,7 +16,7 @@ from llama_merge_csv import construct_dataset
 #lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
 lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
 
-translation_bank = [
+all_translation_bank = [
     {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
     'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
     'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
@@ -28,15 +28,16 @@ translation_bank = [
     'woman': {'zh': '女', 'en': 'woman', 'fr': 'femme', 'de': 'Frau', 'ru': 'женщина'}}
 ]
 
+translation_bank = all_translation_bank[0]
+
 def translation_bank_extract(lang, prompt_bank = 0):
     return set([v[lang] for k, v in translation_bank[prompt_bank].items()])
 
-def generate_common_suffixes(df, src_lang = None, dest_lang = None, **kwargs):
+def generate_common_suffixes(src_words, src_lang = None, dest_lang = None, **kwargs):
     common_suffixes = []
     src_space = " " if src_lang != 'zh' else ""
     
-    
-    for src_word in df[src_lang]:
+    for src_word in src_words:
         src_word = src_word.split('▁')[-1] # Remove leading space token if present
         suffix = f'{src_space}{src_word}" {lang2name[dest_lang]}: "'
         common_suffixes.append(suffix)
@@ -44,10 +45,8 @@ def generate_common_suffixes(df, src_lang = None, dest_lang = None, **kwargs):
         
     
 
-def generate_translation_prompt(word, src_lang=None, dest_lang=None, prompt_bank = 0, **kwargs):
+def generate_translation_prompt(word, src_lang=None, dest_lang=None, translations = translation_bank, **kwargs):
     word = word.split('▁')[-1] if word is not None else None
-        
-    translations = translation_bank[prompt_bank]
     
     src_space = " " if src_lang != 'zh' else ""
     dest_space = " " if dest_lang != 'zh' else ""
@@ -58,9 +57,9 @@ def generate_translation_prompt(word, src_lang=None, dest_lang=None, prompt_bank
         prompt += f'{lang2name[src_lang]}: "{src_space}{translation[src_lang]}" {lang2name[dest_lang]}: "{dest_space}{translation[dest_lang]}"\n'
     
     if word is None: #only generate common prefix
-        prompt += f'{lang2name[src_lang]}: "'
+        prompt += f'{lang2name[src_lang]}: "{src_space}'
     else:
-        prompt += f'{lang2name[src_lang]}: "{src_space}{word}" {lang2name[dest_lang]}: "'
+        prompt += f'{lang2name[src_lang]}: "{src_space}{word}" {lang2name[dest_lang]}: "{not_dest_space}'
     
     # Ensure prompt ends with a space for Chinese
     # actually, no, we don't want this. It messes up the tokenization

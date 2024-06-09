@@ -7,7 +7,13 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 import pandas as pd
+from transformer_lens import HookedTransformerKeyValueCache
 
+def printd(*args, **kwargs):
+    # Check if '__DEBUG__' is in the global namespace and if it is set to True
+    if globals().get('__DEBUG__', False):
+        print("DEBUG:", end=" ")
+        print(*args, **kwargs)
 
 def measure_performance(dataset, model):
     correct = 0
@@ -24,6 +30,36 @@ def measure_performance(dataset, model):
         correct += torch.any(logits.argmax(-1) == targets)
         runner.set_description(f"Accuracy: {correct.item() / (i+1):.3f}, Loss: {loss.item() / (i+1):.3f}")
     return correct / len(dataset), loss / len(dataset)
+
+def broadcast_kv_cache(cache : HookedTransformerKeyValueCache, n : int):
+    """
+    Broadcasts the key-value cache for parallel processing, reshaping its elements
+    from (a, b, c, d) to (n, b, c, d), assuming all elements in dimension 'a' are identical
+    and can be replicated to dimension 'n'.
+
+    Args:
+        cache (object): The key-value cache object.
+        n (int): The number of parallel processes.
+
+    Returns:
+        None
+    """
+    for e in cache:
+        if e.past_keys.dim() == 4 and e.past_keys.size(0) > 1:
+            # Assuming the first dimension has redundant copies, we take one and expand it
+            e.past_keys = e.past_keys[0].unsqueeze(0).expand(n, -1, -1, -1)
+            e.past_values = e.past_values[0].unsqueeze(0).expand(n, -1, -1, -1)
+        else:
+            # If already in correct form or not expanded, simply adjust the dimensions
+            e.past_keys = e.past_keys.expand(n, -1, -1, -1)
+            e.past_values = e.past_values.expand(n, -1, -1, -1)
+    if cache.previous_attention_mask.dim() == 2 and cache.previous_attention_mask.size(0) > 1:
+        # Similarly adjust the attention mask
+        cache.previous_attention_mask = cache.previous_attention_mask[0].unsqueeze(0).expand(n, -1)
+    else:
+        cache.previous_attention_mask = cache.previous_attention_mask.expand(n, -1)
+
+
 
 def proj(x : Float[Tensor, "... dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "... dmodel"]:
     # Computes the projection of x onto the subspace spanned by the columns of Y
