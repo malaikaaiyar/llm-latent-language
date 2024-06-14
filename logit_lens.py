@@ -4,9 +4,6 @@ from sympy import use
 import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformer_lens import HookedTransformer, utils
-#!pip install git+https://github.com/callummcdougall/eindex.git
-import eindex
-import dq
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns

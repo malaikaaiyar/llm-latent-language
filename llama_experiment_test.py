@@ -60,8 +60,8 @@ class Config:
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
     use_tuned_lens : bool = False
-    intervention_correct_latent_space : bool = True
-    steer_scale_coeff : float = 1.0
+    interv_match_latent : bool = True
+    interv_steer_coeff : float = 1.0
     start_layer_low : int = 0
     start_layer_high : int = 32
     end_layer_low : int = 0

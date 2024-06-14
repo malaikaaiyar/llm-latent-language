@@ -56,8 +56,8 @@ class Config:
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
     use_tuned_lens : bool = False
-    intervention_correct_latent_space : bool = True
-    steer_scale_coeff : float = 1.0
+    interv_match_latent : bool = True
+    interv_steer_coeff : float = 1.0
     start_layer_low : int = 0
     start_layer_high : int = 32
     end_layer_low : int = 0
@@ -69,7 +69,7 @@ class Config:
     use_reverse_lens : bool = False
     rev_lens_scale : float = 2
     only_compute_stats : bool = True
-    translation_threshold : float = 0.5
+    trans_thresh : float = 0.5
 
 cfg = Config()
 
@@ -142,8 +142,8 @@ layer_log2 = {}
 
 start_lower, start_upper = cfg.start_layer_low, cfg.start_layer_high
 end_lower, end_upper = cfg.end_layer_low, cfg.end_layer_high
-#steer_scale_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
-#steer_scale_coeff_list = [1.0]
+#interv_steer_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
+#interv_steer_coeff_list = [1.0]
 
 
 def calculate_iterations(start_lower, start_upper, end_lower, end_upper):

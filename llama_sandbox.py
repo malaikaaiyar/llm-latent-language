@@ -80,7 +80,7 @@ class Config:
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
     use_tuned_lens : bool = True
-    steer_scale_coeff : float = 1.0
+    interv_steer_coeff : float = 1.0
     
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import pandas as pd
 from transformers import AutoTokenizer
 from tqdm import tqdm
-from llama_merge_csv import construct_dataset
 # %%
 
 # Get the current working directory
@@ -186,6 +185,15 @@ def all_dataset(vocab, **kwargs):
 
         
 # %%
+def load_dataset(dataset_path, src_lang, dest_lang, latent_lang, **kwargs):
+    assert src_lang != dest_lang, "Source and destination languages must be different"
+    src_dataset = pd.read_csv(os.path.join(dataset_path, f'en_to_{src_lang}'))
+    dest_dataset = pd.read_csv(os.path.join(dataset_path, f'en_to_{dest_lang}'))
+    
+    
+                                           
+
+
 def merge_datasets(df_src, df_dest, df_latent, vocab, **kwargs):
     """
     Process the dataset by filtering out rows that contain single tokens not present in the tokenizer's vocabulary.
@@ -423,7 +431,7 @@ def replace_source_word(prompt, new_french_word):
     return updated_prompt
 
 
-def filter_correct(dataset, model):
+def filter_correct(prompt, dataset, model, tokenizer):
     """
     Purges the dataset by removing instances that the mode doesn't predict correctly,
     both for the original and the counterfactual prompts.
@@ -436,7 +444,9 @@ def filter_correct(dataset, model):
     Returns:
         list: The purged dataset.
     """
-    new_dataset = []
+    prompt_tok = tokenizer.encode(prompt, return_tensors='pt')
+    generate_common_suffixes(dataset, tokenizer)
+    
     device = next(model.parameters()).device
     correct = 0
     tokenizer = model.tokenizer

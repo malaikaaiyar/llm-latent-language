@@ -36,20 +36,25 @@ __DEBUG__ = True
 # %%
 torch.set_grad_enabled(False)
 @dataclass
+@dataclass
 class Config:
-    model_name : str = 'gemma-2b'
-    #model_name : str = 'meta-llama/Llama-2-7b-hf'
-    #save_dir : str = './data/synth_gemma_2b'
-    #save_dir : str = './data/synth_llama_2_7b_new'
-    save_dir : str = "DUMMY_NAME"
-    #translation_bank_name : str = "llama" # just always use llama
-    model_dtype : torch.dtype = torch.float16
-    translation_threshold : float = 0.0
-    batch_size : int = 128
+    model_name: str = field(
+        default='gemma-2b', 
+        metadata={"help": "Model name to be used. Options include 'gemma-2b' and 'meta-llama/Llama-2-7b-hf'."})
+    save_dir: str = field(
+        default='DUMMY_NAME', 
+        metadata={"help": "Directory to save data. Defaults to 'DUMMY_NAME' but should be set appropriately like './data/synth_gemma_2b' or './data/synth_llama_2_7b_new'."})
+    model_dtype: str = field(default="fp16", 
+                                     metadata={"help": "Data type of the model [fp16 | fp32 | auto]."})
+    trans_thresh: float = field(default=0.0, 
+                                metadata={"help": "Threshold for translations. Set to 0.0 by default."})
+    batch_size: int = field(default=128, 
+                            metadata={"help": "Batch size for processing. Default is 128."})
+
 
 cfg = Config()
 cfg = try_parse_args(cfg)
-# %%
+ # %%
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -293,7 +298,12 @@ def en_tokens():
 
 
 # %%
-def auto_translate(translation_threshold = 0.5, **kwargs):
+def verify_zh(df):
+    df = df[df['zh'].apply(lambda x: all([is_chinese_char(c) for c in x]))]
+    return df
+
+
+def auto_translate(trans_thresh = 0.5, **kwargs):
 
     en_words = en_tokens()
     
@@ -304,6 +314,7 @@ def auto_translate(translation_threshold = 0.5, **kwargs):
 
 
     en_to_zh = translate(en_words, 'en', 'zh', **kwargs)
+    en_to_zh = verify_zh(en_to_zh) # remove non-chinese characters
     en_to_fr = translate(en_words, 'en', 'fr', **kwargs)
     en_to_de = translate(en_words, 'en', 'de', **kwargs)
     en_to_ru = translate(en_words, 'en', 'ru', **kwargs)
@@ -326,7 +337,7 @@ def auto_translate(translation_threshold = 0.5, **kwargs):
     print(all[:10])
     # Save filtered_df dataframe
     all = remove_dup_translation(all)
-    mask = all.filter(like='_prob').gt(translation_threshold).all(axis=1)
+    mask = all.filter(like='_prob').gt(trans_thresh).all(axis=1)
     # Filter the DataFrame using the mask
     filtered_df = all[mask]
     filtered_df.reset_index(drop=True, inplace=True)

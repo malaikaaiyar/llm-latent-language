@@ -109,15 +109,15 @@ def hook_diff_subspace(
     alt_latent_ids: Int[Tensor, "num_alt_latent_tokens"] = None,
     **kwargs
 ) -> Float[Tensor, "batch seq dmodel"]:
-    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
-    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    interv_steer_coeff = kwargs.get('interv_steer_coeff', None)
+    assert interv_steer_coeff is not None, "interv_steer_coeff must be provided"
     subspace_latent = model.unembed.W_U.T[latent_ids]
     latent_vec = subspace_latent.mean(dim=0)
     alt_latent_vec = model.unembed.W_U.T[alt_latent_ids].mean(dim=0)
     v = resid[:, -1]
     proj_latent = proj(v.float(), subspace_latent.float()).half()
     #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
-    resid[:, -1] =  v - proj_latent + steer_scale_coeff * torch.linalg.norm(proj_latent) * (alt_latent_vec - latent_vec)
+    resid[:, -1] =  v - proj_latent + interv_steer_coeff * torch.linalg.norm(proj_latent) * (alt_latent_vec - latent_vec)
     return resid
 
 def hook_only_new_subspace(
@@ -128,15 +128,15 @@ def hook_only_new_subspace(
     alt_latent_ids: Int[Tensor, "num_alt_latent_tokens"] = None,
     **kwargs
 ) -> Float[Tensor, "batch seq dmodel"]:
-    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
-    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    interv_steer_coeff = kwargs.get('interv_steer_coeff', None)
+    assert interv_steer_coeff is not None, "interv_steer_coeff must be provided"
     subspace_latent = model.unembed.W_U.T[latent_ids]
     latent_vec = subspace_latent.mean(dim=0)
     alt_latent_vec = model.unembed.W_U.T[alt_latent_ids].mean(dim=0)
     v = resid[:, -1]
     proj_latent = proj(v.float(), subspace_latent.float()).half()
     #print(v.shape, latent_vec.shape, alt_latent_vec.shape)
-    resid[:, -1] =  v - proj_latent + steer_scale_coeff * alt_latent_vec
+    resid[:, -1] =  v - proj_latent + interv_steer_coeff * alt_latent_vec
     return resid
 
 
@@ -146,11 +146,11 @@ def hook_reject_subspace(
     model,
     latent_ids : Int[Tensor, "num_latent_tokens"] = None,
     alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
-    intervention_correct_latent_space : bool = True,
+    interv_match_latent : bool = True,
     **kwargs
 ) -> Float[Tensor, "batch seq dmodel"]:
     # modify attn_pattern (can be inplace)
-    if intervention_correct_latent_space:
+    if interv_match_latent:
         subspace = model.unembed.W_U.T[latent_ids]
     else:
         subspace = model.unembed.W_U.T[alt_latent_ids]
@@ -167,7 +167,7 @@ def hook_reject_subspace_v2(
     model,
     latent_ids : Int[Tensor, "num_latent_tokens"] = None,
     alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
-    intervention_correct_latent_space : bool = True,
+    interv_match_latent : bool = True,
     cache : Dict = None,
     use_reverse_lens : bool = False,
     rev_lens_scale : float = None,
@@ -177,7 +177,7 @@ def hook_reject_subspace_v2(
     
      # Define the regular expression pattern
 
-    idx = latent_ids if intervention_correct_latent_space else alt_latent_ids
+    idx = latent_ids if interv_match_latent else alt_latent_ids
     
     if use_reverse_lens:
         #assert cache is not None, "cache required for reverse_lens"
@@ -212,8 +212,8 @@ def hook_diff_subspace_v2(
     rev_lens_scale : float = None,
     **kwargs
 ) -> Float[Tensor, "batch seq dmodel"]:
-    steer_scale_coeff = kwargs.get('steer_scale_coeff', None)
-    assert steer_scale_coeff is not None, "steer_scale_coeff must be provided"
+    interv_steer_coeff = kwargs.get('interv_steer_coeff', None)
+    assert interv_steer_coeff is not None, "interv_steer_coeff must be provided"
     
     
     if use_reverse_lens:

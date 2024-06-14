@@ -19,13 +19,13 @@ def filter_matching_translations(df, **kwargs):
     return df[~mask]
 # %%
 
-def filter_by_probability_threshold(df, translation_threshold = -1, **kwargs):
+def filter_by_probability_threshold(df, trans_thresh = -1, **kwargs):
     # Identify columns that end with '_prob'
     prob_columns = [col for col in df.columns if col.endswith('_prob')]
 
     # Use DataFrame's filter with conditions based on the threshold
     # Keep only rows where all probability columns meet or exceed the threshold
-    df_filtered = df[df[prob_columns].min(axis=1) >= translation_threshold]
+    df_filtered = df[df[prob_columns].min(axis=1) >= trans_thresh]
     df_filtered = df_filtered.reset_index(drop=True)
     return df_filtered    
 

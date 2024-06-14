@@ -8,12 +8,70 @@ from torch import Tensor
 from tqdm import tqdm
 import pandas as pd
 from transformer_lens import HookedTransformerKeyValueCache
+import os
+import sys
+import pickle
+import pprint
+from dataclasses import asdict
+import numpy as np
 
 def printd(*args, **kwargs):
     # Check if '__DEBUG__' is in the global namespace and if it is set to True
     if globals().get('__DEBUG__', False):
         print("DEBUG:", end=" ")
         print(*args, **kwargs)
+
+def calculate_iterations(start_lower, start_upper, end_lower, end_upper):
+    if start_upper <= start_lower or end_upper <= end_lower:
+        return 0  # No valid iterations if ranges are non-positive or improperly defined
+
+    # Maximum valid start_layer is start_upper - 1
+    # Minimum valid end_layer is start_layer + 1, which translates to start_lower + 1 for start_lower
+    if end_upper <= start_lower + 1:
+        return 0  # No valid end_layer values if end_upper is less than or equal to start_lower + 1
+
+    # Applying the formula: Summing (end_upper - k - 1) for k from start_lower to start_upper - 1
+    total_iterations = 0
+    for k in range(start_lower, start_upper):
+        if k + 1 < end_upper:  # Ensure that there is at least one valid end_layer
+            total_iterations += (end_upper - (k + 1))
+
+    return total_iterations
+
+
+def str_dict(d):
+    # Create a formatted string from dictionary entries
+    items = [f"{k}: {f'{v:.4f}' if isinstance(v, float) else v}" for k, v in d.items()]
+    # Join all items in a single line
+    return ', '.join(items)
+
+def write_log(layer_log2, cfg, info = {}):
+    base_log_file_path = cfg.log_file.rsplit('.', 1)[0]  # Strip off the extension if provided
+
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(base_log_file_path), exist_ok=True)
+
+    with open(base_log_file_path + ".pkl", "wb") as pickle_file:
+        pickle.dump(layer_log2, pickle_file)
+
+    # pickle.dump(layer_log2, open(cfg.log_file + ".pkl", "wb"))
+
+    log_legend = """
+    Measuring 
+    lp_out/p_out : logprobs/probs of correct answer
+    lp_alt/p_alt logprobs/probs of alternate answer
+    lp_diff/p_ratio: logprob_diff/probs ration of alt-correct or alt/correct
+    """
+
+    pp = pprint.PrettyPrinter(sort_dicts=False)
+    # Save log_legend to the log file
+    with open(base_log_file_path + ".log", "a") as f:
+        f.write("Command: " + ' '.join(sys.argv) + "\n")
+        f.write(pp.pformat(asdict(cfg)))
+        f.write("\n==============\n")
+        for key, val in info.items():
+            f.write(f"{key}: {val}\n")
+    print("Done!")
 
 def measure_performance(dataset, model):
     correct = 0
@@ -140,6 +198,38 @@ def plot_ci(data, ax, dim=1, **kwargs):
     sem95 = 1.96 * std / (len(data)**0.5) 
     ax.plot(range(len(mean)), mean, **kwargs)
     ax.fill_between(range(len(mean)), mean - sem95, mean + sem95, alpha=0.3)
+    
+plt_params = {'linewidth': 2.2}
+def plot_ci_plus_heatmap(data, heat, labels, 
+                         color='blue', 
+                         linestyle='-',
+                         tik_step=10, 
+                         method='gaussian', 
+                         do_lines=True, 
+                         do_colorbar=False, 
+                         shift=0.5, 
+                         nums = [.99, 0.18, 0.025, 0.6],
+                         labelpad=10,
+                         plt_params=plt_params):
+    
+    fig, (ax, ax2) = plt.subplots(nrows=2, sharex=True, gridspec_kw={'height_ratios': [1, 10]}, figsize=(5, 3))
+    if do_colorbar:
+        fig.subplots_adjust(right=0.8) 
+    plot_ci(ax2, data, labels, color=color, linestyle=linestyle, tik_step=tik_step, method=method, do_lines=do_lines, plt_params=plt_params)
+    
+    y = heat.mean(dim=0)
+    x = np.arange(y.shape[0])+1
+
+    extent = [x[0]-(x[1]-x[0])/2. - shift, x[-1]+(x[1]-x[0])/2. + shift, 0, 1]
+    img =ax.imshow(y[np.newaxis,:], cmap="plasma", aspect="auto", extent=extent, vmin=0, vmax=14)
+    ax.set_yticks([])
+    #ax.set_xlim(extent[0], extent[1])
+    if do_colorbar:
+        cbar_ax = fig.add_axes(nums)  # Adjust these values as needed
+        cbar = plt.colorbar(img, cax=cbar_ax)
+        cbar.set_label('entropy', rotation=90, labelpad=labelpad)  # Adjust label and properties as needed
+    plt.tight_layout()
+    return fig, ax, ax2
     
 def get_space_char(tokenizer):
     """

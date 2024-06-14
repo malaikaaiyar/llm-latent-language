@@ -80,7 +80,7 @@ class Config:
     token_add_prefixes : bool = False
     dataset_filter_correct : bool = True
     use_tuned_lens : bool = True
-    steer_scale_coeff : float = 1.0
+    interv_steer_coeff : float = 1.0
     
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -203,28 +203,28 @@ layer_log2 = {}
 
 start_lower, start_upper = 16,22
 end_lower, end_upper = 27, 32
-steer_scale_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
+interv_steer_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
 
-total_iterations = (start_upper - start_lower) * (end_upper - end_lower) * len(steer_scale_coeff_list)
+total_iterations = (start_upper - start_lower) * (end_upper - end_lower) * len(interv_steer_coeff_list)
 outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
 
 import intervention
 from logit_lens import get_logits, plot_logit_lens_latents
 
 best_prob = 0
-for steer_scale_coeff in steer_scale_coeff_list:
+for interv_steer_coeff in interv_steer_coeff_list:
     for start_layer in range(start_lower,start_upper):
         for end_layer in range(end_lower, end_upper):
             intervene_diff = Intervention(intervention.hook_diff_subspace, range(start_layer, end_layer))
-            cfg_dict['steer_scale_coeff'] = steer_scale_coeff
+            cfg_dict['interv_steer_coeff'] = interv_steer_coeff
             latent_diff, logits_diff = get_logits(correct_dataset, model, intervention=intervene_diff,  **cfg_dict)
 
             stats = plot_logit_lens_latents(logits_diff, correct_dataset, **cfg_dict, title="diff", cfg=cfg, only_compute_stats=False)
             
             if stats['p_alt'] > best_prob:
-                new_best_msg = f"New best: start_layer={start_layer}, end_layer={end_layer}, steer={steer_scale_coeff:.02f} p_alt={stats['p_alt']:.04f}, ld_diff={stats['lp_diff']:.04f}"
+                new_best_msg = f"New best: start_layer={start_layer}, end_layer={end_layer}, steer={interv_steer_coeff:.02f} p_alt={stats['p_alt']:.04f}, ld_diff={stats['lp_diff']:.04f}"
                 tqdm.write(new_best_msg)  # Using tqdm.write to avoid interference with the progress bar
-                outer_pbar.set_description(f"Best prob {stats['p_alt']:.3f} ld_diff {stats['lp_diff']:.3f} layers {start_layer}->{end_layer} steer_scale_coeff={steer_scale_coeff:.02f}")
+                outer_pbar.set_description(f"Best prob {stats['p_alt']:.3f} ld_diff {stats['lp_diff']:.3f} layers {start_layer}->{end_layer} interv_steer_coeff={interv_steer_coeff:.02f}")
                 best_prob = stats['p_alt']
                 best_diff = stats['lp_diff']
                 best_start_layer = start_layer
@@ -232,10 +232,10 @@ for steer_scale_coeff in steer_scale_coeff_list:
                 best_stats = stats
                 best_ld_diff = stats['lp_diff']
             else:
-                tqdm.write(f"start_layer={start_layer}, end_layer={end_layer}, steer={steer_scale_coeff:.02f} p_alt={stats['p_alt']:.04f}, ld_diff={stats['lp_diff']:.04f}")
+                tqdm.write(f"start_layer={start_layer}, end_layer={end_layer}, steer={interv_steer_coeff:.02f} p_alt={stats['p_alt']:.04f}, ld_diff={stats['lp_diff']:.04f}")
             
             outer_pbar.update(1)  # Increment the progress bar after each inner iteration
-            layer_log2[(start_layer, end_layer, steer_scale_coeff)] = stats
+            layer_log2[(start_layer, end_layer, interv_steer_coeff)] = stats
 
 
 outer_pbar.close()  # Ensure to close the progress bar after the loop completes

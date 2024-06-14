@@ -112,7 +112,7 @@ cfg = Config(use_tuned_lens = False)
 latents, logits = get_logits(dataset, model, intervention=None, cfg=cfg)
 #latents_int, logits_int = get_logits(dataset, model, intervention=intervene_reject, cfg=cfg)
 latents_bad, logits_bad = get_logits(dataset, model, intervention=intervene_reject, **cfg_kwargs)
-latents_wrong, logits_wrong = get_logits(dataset, model, intervention=intervene_reject, intervention_correct_latent_space =False, **cfg_kwargs)
+latents_wrong, logits_wrong = get_logits(dataset, model, intervention=intervene_reject, interv_match_latent =False, **cfg_kwargs)
 # %%
 def analysis(latents, logits, **kwargs):
     stats = plot_logit_lens_latents(logits, dataset, cfg=cfg, **kwargs)
