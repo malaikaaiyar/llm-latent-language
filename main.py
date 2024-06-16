@@ -246,8 +246,14 @@ def main(dataset, cfg):
 # df_raw_data = gen_data.merge_datasets(df_src, df_dest, tokenizer_vocab, cfg)
 
 # %%
+%load_ext autoreload
+%autoreload 2
+# %%
+import gen_data
 prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
 raw_dataset = gen_data.load_dataset(cfg.dataset_path, cfg.src_lang, cfg.dest_lang, cfg.latent_lang)
+raw_dataset = gen_data.remove_dups(raw_dataset)
+dataset = gen_data.keep_correct(raw_dataset, prompt, cfg) # TODO
 #hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
 #measure_performance(correct_dataset, model) #TODO fix
 

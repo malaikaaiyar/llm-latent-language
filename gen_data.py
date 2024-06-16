@@ -251,63 +251,6 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
                                            
 # %%
 
-def run_with_cached_prefix(prompt : str, 
-                           suffix_toks : List[str], 
-                           model, 
-                           kv_cache, 
-                           device, 
-                           bs = 1):
-    all_probs = []
-    all_toks = []
-    
-    kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
-    prefix_tok = model.tokenizer.encode(prefix, return_tensors="pt").to(device)
-    model(prefix_tok, past_kv_cache = kv_cache) #fill kv_cache
-    kv_cache.freeze()
-    
-    suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang) #suffixes will have leading space for gemma
-    global raw_suffix_toks
-    raw_suffix_toks, attention_mask = model.tokenizer(suffixes, add_special_tokens=False, return_tensors="pt", padding = True).values() #remove start of sequence character
-    good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
-    if torch.any(attention_mask == 0):
-        printd("Attention mask has zeros")
-        # assume that most common number of tokens is correct
-        # we only get more tokens if somethign screwed up and a chinese character was sampled
-        # when it shouldn't have, so take the ids with shortest attention mask
-        counts = attention_mask.sum(dim=1)
-        correct_count = torch.mode(counts, dim=0).values
-        good_idx = counts == correct_count
-        # global bad_idx
-        # bad_idx = torch.where(counts != correct_count)
-        
-        suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
-        assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
-    else:
-        suffix_toks = raw_suffix_toks
-    
-    suffix_toks = suffix_toks.to(device)
-    suffix_toks = process_suffix_toks(suffix_toks)
-    suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
-    
-    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
-    
-    for batch in runner:
-        broadcast_kv_cache(kv_cache, len(batch))
-        batch = batch.to(device)
-        logits = model(batch, past_kv_cache = kv_cache)[:, -1].detach()  # model returns (batch, seq, dvocab)
-        probs = torch.softmax(logits, dim=-1)
-        max_probs, max_tokens = torch.max(probs, dim=-1)
-        
-        all_probs.append(max_probs)
-        all_toks.append(max_tokens)
-        runner.update(len(batch))
-        
-    all_probs = torch.cat(all_probs, dim=0)
-    all_toks = torch.cat(all_toks, dim=0)
-    return all_probs, all_toks, suffix_toks, good_idx
-
-
-
 def keep_correct(df, prompt, src_lang = None, dest_lang = None, **kwargs):
 
         kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
