@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import pandas as pd
 from transformers import AutoTokenizer
 from tqdm import tqdm
+from typing import List, Dict, Any
 # %%
 
 # Get the current working directory
@@ -33,6 +34,8 @@ def translation_bank_extract(lang, prompt_bank = 0):
     return set([v[lang] for k, v in translation_bank[prompt_bank].items()])
 
 def generate_common_suffixes(src_words, src_lang = None, dest_lang = None, **kwargs):
+    assert src_lang is not None, "Source language must be provided"
+    assert dest_lang is not None, "Destination language must be provided"
     common_suffixes = []
     src_space = " " if src_lang != 'zh' else ""
     
@@ -185,52 +188,257 @@ def all_dataset(vocab, **kwargs):
 
         
 # %%
-def load_dataset(dataset_path, src_lang, dest_lang, latent_lang, **kwargs):
-    assert src_lang != dest_lang, "Source and destination languages must be different"
-    src_dataset = pd.read_csv(os.path.join(dataset_path, f'en_to_{src_lang}'))
-    dest_dataset = pd.read_csv(os.path.join(dataset_path, f'en_to_{dest_lang}'))
-    
-    
-                                           
-
-
-def merge_datasets(df_src, df_dest, df_latent, vocab, **kwargs):
+def remove_dups(df):
     """
-    Process the dataset by filtering out rows that contain single tokens not present in the tokenizer's vocabulary.
-    Then, merge the filtered source and destination dataframes based on the original word.
+    Remove duplicate rows from the given DataFrame.
 
     Args:
-        df_src (pandas.DataFrame): The source dataframe.
-        df_dest (pandas.DataFrame): The destination dataframe.
-        tokenizer (Tokenizer, optional): The tokenizer object used for tokenization. Defaults to tokenizer.
-        cfg (Config, optional): The configuration object. Defaults to cfg.
+        df (pandas.DataFrame): The input DataFrame to remove duplicates from.
 
     Returns:
-        pandas.DataFrame: The merged dataframe containing the filtered data.
+        pandas.DataFrame: The DataFrame with duplicates removed.
     """
+    cols = [col for col in df.columns if col in lang2name]
+    
+    dup_row = []
+    
+    for idx, row in df.iterrows():
+        if len(set([row[col].split('▁')[-1].lower() for col in cols])) < len(cols):
+            dup_row.append(idx)
+    df = df.drop(dup_row)
+    return df
 
-    # this is expensive, only do it once and use the same vocab
-    # DO NOT USE if x in tokenizer.get_vocab()
+def merge_dfs(list_df, on = ['en', 'en_tok']):
+    merged_df = list_df[0]
+    for df in list_df[1:]:
+        merged_df = merged_df.merge(df, on=on, how='inner')
+    return merged_df
 
-    src_lang = kwargs.get('src_lang', 'fr')
-    dest_lang = kwargs.get('dest_lang', 'zh')
-    latent_lang = kwargs.get('latent_lang', 'en')
-    debug = kwargs.get('debug', False)
+def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
+    """
+    Load and merge datasets for the given source, destination, and latent languages.
+
+    Args:
+        dataset_path (str): The path to the dataset directory.
+        src_lang (str): The source language.
+        dest_lang (str): The destination language.
+        latent_lang (str): The latent language.
+
+    Returns:
+        pandas.DataFrame: The merged dataset with duplicates removed.
+    """
+    assert src_lang != dest_lang, "Source and destination languages must be different"
+    datasets = {}
+    for lang in [src_lang, dest_lang, latent_lang]:
+        if lang in datasets or lang == 'en':
+            continue
+        lang_df = pd.read_csv(os.path.join(dataset_path, f'en_to_{lang}.csv'))
+        datasets[lang] = lang_df
         
-    df_src = keep_single_toks(df_src, vocab)
-    df_dest = keep_single_toks(df_dest, vocab)
-    df_latent = keep_single_toks(df_latent, vocab)
+    datasets = list(datasets.values())
+   
+    all_df = merge_dfs(datasets)
     
-    df_merged = df_dest.merge(df_src, on=['word_original'], suffixes=('_dest', '_src'))
-    df_merged = df_merged.merge(df_latent, on=['word_original'])
-    df_merged.rename(columns={'word_original': 'en', 
-                              f'word_translation_dest': dest_lang, 
-                              f'word_translation_src': src_lang,
-                              'word_translation': latent_lang}, 
-                     inplace=True)
+    lang_col = [col for col in all_df.columns if len(col) == 2]
+    tok_col = [col for col in all_df.columns if '_tok' in col]
+    other_col = [col for col in all_df.columns if col not in lang_col + tok_col]
+    new_order = sorted(lang_col) + sorted(tok_col) + other_col 
+    all_df = all_df[new_order]
+    return remove_dups(all_df)
     
-    print(f"Merged tokens: {len(df_merged)}")
-    return df_merged
+
+
+                                           
+# %%
+
+def run_with_cached_prefix(prompt : str, 
+                           suffix_toks : List[str], 
+                           model, 
+                           kv_cache, 
+                           device, 
+                           bs = 1):
+    all_probs = []
+    all_toks = []
+    
+    kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
+    prefix_tok = model.tokenizer.encode(prefix, return_tensors="pt").to(device)
+    model(prefix_tok, past_kv_cache = kv_cache) #fill kv_cache
+    kv_cache.freeze()
+    
+    suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang) #suffixes will have leading space for gemma
+    global raw_suffix_toks
+    raw_suffix_toks, attention_mask = model.tokenizer(suffixes, add_special_tokens=False, return_tensors="pt", padding = True).values() #remove start of sequence character
+    good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
+    if torch.any(attention_mask == 0):
+        printd("Attention mask has zeros")
+        # assume that most common number of tokens is correct
+        # we only get more tokens if somethign screwed up and a chinese character was sampled
+        # when it shouldn't have, so take the ids with shortest attention mask
+        counts = attention_mask.sum(dim=1)
+        correct_count = torch.mode(counts, dim=0).values
+        good_idx = counts == correct_count
+        # global bad_idx
+        # bad_idx = torch.where(counts != correct_count)
+        
+        suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
+        assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
+    else:
+        suffix_toks = raw_suffix_toks
+    
+    suffix_toks = suffix_toks.to(device)
+    suffix_toks = process_suffix_toks(suffix_toks)
+    suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
+    
+    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
+    
+    for batch in runner:
+        broadcast_kv_cache(kv_cache, len(batch))
+        batch = batch.to(device)
+        logits = model(batch, past_kv_cache = kv_cache)[:, -1].detach()  # model returns (batch, seq, dvocab)
+        probs = torch.softmax(logits, dim=-1)
+        max_probs, max_tokens = torch.max(probs, dim=-1)
+        
+        all_probs.append(max_probs)
+        all_toks.append(max_tokens)
+        runner.update(len(batch))
+        
+    all_probs = torch.cat(all_probs, dim=0)
+    all_toks = torch.cat(all_toks, dim=0)
+    return all_probs, all_toks, suffix_toks, good_idx
+
+
+
+def keep_correct(df, prompt, src_lang = None, dest_lang = None, **kwargs):
+
+        kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
+        prefix_tok = model.tokenizer.encode(prompt, return_tensors="pt").to(device)
+        model(prefix_tok, past_kv_cache = kv_cache) #fill kv_cache
+        kv_cache.freeze()
+        
+        suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
+        raw_suffix_toks, attention_mask = model.tokenizer(suffixes, add_special_tokens=False, return_tensors="pt", padding = True).values() #remove start of sequence character
+        good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
+        if torch.any(attention_mask == 0):
+            printd("Attention mask has zeros")
+            # assume that most common number of tokens is correct
+            # we only get more tokens if somethign screwed up and a chinese character was sampled
+            # when it shouldn't have, so take the ids with shortest attention mask
+            counts = attention_mask.sum(dim=1)
+            correct_count = torch.mode(counts, dim=0).values
+            good_idx = counts == correct_count
+            # global bad_idx
+            # bad_idx = torch.where(counts != correct_count)
+            
+            suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
+            assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
+        else:
+            suffix_toks = raw_suffix_toks
+        
+        suffix_toks = suffix_toks.to(device)
+        suffix_toks = process_suffix_toks(suffix_toks)
+        suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
+        
+        runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
+        
+        for batch in runner:
+            broadcast_kv_cache(kv_cache, len(batch))
+            batch = batch.to(device)
+            logits = model(batch, past_kv_cache = kv_cache)[:, -1].detach()  # model returns (batch, seq, dvocab)
+            probs = torch.softmax(logits, dim=-1)
+            max_probs, max_tokens = torch.max(probs, dim=-1)
+            
+            all_probs.append(max_probs)
+            all_toks.append(max_tokens)
+            runner.update(len(batch))
+            
+        all_probs = torch.cat(all_probs, dim=0)
+        all_toks = torch.cat(all_toks, dim=0)
+        return all_probs, all_toks, suffix_toks, good_idx
+
+    # if debug:
+    #     for src_word in src_words:
+    #         if is_chinese_char(src_word):
+    #             assert src_word in vocab, f"Input zh string {src_word} not in vocabulary"
+    #         else:
+    #             assert "▁" + src_word in vocab, f"Input non-zh string {src_word} not in vocabulary"
+    
+    to_dest_probs, to_dest_tokens, src_suffix_toks, good_idx = run(src_words, src_lang, dest_lang)
+    
+    idx = (to_dest_probs > threshold) & good_idx.to(device)
+    to_dest_probs = to_dest_probs[idx]
+    to_dest_tokens = to_dest_tokens[idx]
+    src_tokens = src_suffix_toks[idx,0]
+    #print(f"{src_tokens.shape=}, {src_suffix_toks.shape=}")
+    
+    print(f"Kept {len(to_dest_probs)} / {len(idx)} translations")
+    to_dest_words = model.tokenizer.convert_ids_to_tokens(to_dest_tokens)
+    rev_src_probs, rev_src_tokens, dest_suffix_toks, good_idx2 = run(to_dest_words, dest_lang, src_lang)
+
+    dest_tokens = dest_suffix_toks[:, 0]
+    
+    printd(model.tokenizer.convert_ids_to_tokens(src_tokens[:50]))
+    printd(model.tokenizer.convert_ids_to_tokens(dest_tokens[:50]))
+    printd(model.tokenizer.convert_ids_to_tokens(rev_src_tokens[:50]))
+
+    to_dest_probs = to_dest_probs[good_idx2]
+    to_dest_tokens = to_dest_tokens[good_idx2]
+    src_tokens = src_tokens[good_idx2]
+
+    cidx = (src_tokens == rev_src_tokens) & (rev_src_probs > threshold)
+    
+    print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(src_words)}")
+    
+    data = {
+        src_lang: model.tokenizer.convert_ids_to_tokens(src_tokens[cidx]),
+        dest_lang: model.tokenizer.convert_ids_to_tokens(dest_tokens[cidx]),
+        src_lang + "_tok" : src_tokens[cidx].cpu(),
+        dest_lang + "_tok" : dest_tokens[cidx].cpu(),
+        f'{src_lang}_to_{dest_lang}_prob': to_dest_probs[cidx].cpu(),
+        f'{dest_lang}_to_{src_lang}_prob': rev_src_probs[cidx].cpu()
+    }
+
+    df = pd.DataFrame(data)
+    df = remove_dup_translation(df)
+    return df
+
+
+# def merge_datasets(df_src, df_dest, df_latent, vocab, **kwargs):
+#     """
+#     Process the dataset by filtering out rows that contain single tokens not present in the tokenizer's vocabulary.
+#     Then, merge the filtered source and destination dataframes based on the original word.
+
+#     Args:
+#         df_src (pandas.DataFrame): The source dataframe.
+#         df_dest (pandas.DataFrame): The destination dataframe.
+#         tokenizer (Tokenizer, optional): The tokenizer object used for tokenization. Defaults to tokenizer.
+#         cfg (Config, optional): The configuration object. Defaults to cfg.
+
+#     Returns:
+#         pandas.DataFrame: The merged dataframe containing the filtered data.
+#     """
+
+#     # this is expensive, only do it once and use the same vocab
+#     # DO NOT USE if x in tokenizer.get_vocab()
+
+#     src_lang = kwargs.get('src_lang', 'fr')
+#     dest_lang = kwargs.get('dest_lang', 'zh')
+#     latent_lang = kwargs.get('latent_lang', 'en')
+#     debug = kwargs.get('debug', False)
+        
+#     df_src = keep_single_toks(df_src, vocab)
+#     df_dest = keep_single_toks(df_dest, vocab)
+#     df_latent = keep_single_toks(df_latent, vocab)
+    
+#     df_merged = df_dest.merge(df_src, on=['word_original'], suffixes=('_dest', '_src'))
+#     df_merged = df_merged.merge(df_latent, on=['word_original'])
+#     df_merged.rename(columns={'word_original': 'en', 
+#                               f'word_translation_dest': dest_lang, 
+#                               f'word_translation_src': src_lang,
+#                               'word_translation': latent_lang}, 
+#                      inplace=True)
+    
+#     print(f"Merged tokens: {len(df_merged)}")
+#     return df_merged
 
 def unicode_leading_byte(token_str : str):
         """
@@ -315,21 +523,21 @@ def find_all_tokens(token_str: str, vocab, **kwargs):
 #     return (-probas*torch.log2(probas)).sum(dim=-1)
 
 
-def filter_matching_translations(df):
-    # Identify columns that represent language translations by excluding probability columns
-    lang_cols = [col for col in df.columns if '_prob' not in col]
+# def filter_matching_translations(df):
+#     # Identify columns that represent language translations by excluding probability columns
+#     lang_cols = [col for col in df.columns if '_prob' not in col]
     
-    # Define a filter function to detect any rows with duplicate translations
-    def has_duplicate_translations(row):
-        # Check the row values for the language columns, if there are duplicates among them
-        translations = row[lang_cols].tolist()
-        return len(set(translations)) != len(translations)
+#     # Define a filter function to detect any rows with duplicate translations
+#     def has_duplicate_translations(row):
+#         # Check the row values for the language columns, if there are duplicates among them
+#         translations = row[lang_cols].tolist()
+#         return len(set(translations)) != len(translations)
     
-    # Apply the filter function to identify rows with duplicate translations
-    mask = df.apply(has_duplicate_translations, axis=1)
+#     # Apply the filter function to identify rows with duplicate translations
+#     mask = df.apply(has_duplicate_translations, axis=1)
     
-    # Filter out the rows where any translations are duplicated
-    return df[~mask]
+#     # Filter out the rows where any translations are duplicated
+#     return df[~mask]
 
 def gen_translation_task(df, vocab, **kwargs):
     """

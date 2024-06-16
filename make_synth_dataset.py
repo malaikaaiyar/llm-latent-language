@@ -32,6 +32,7 @@ from tuned_lens_wrap import load_tuned_lens
 from dq_utils import proj, entropy, plot_ci, is_chinese_char, broadcast_kv_cache, printd
 from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
 from config_argparse import try_parse_args
+import prefix
 __DEBUG__ = True
 # %%
 torch.set_grad_enabled(False)
@@ -64,14 +65,6 @@ model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
 vocab = model.tokenizer.get_vocab()
 # %%
 
-
-language_labels = {
-    'zh': '中文',
-    'en': 'English',
-    'fr': 'Français',
-    'de': 'Deutsch',
-    'ru': 'Русский'
-}
     #{'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
 
 all_translation_banks = {'gemma' :
@@ -89,7 +82,13 @@ all_translation_banks = {'gemma' :
 # just use the same bank for both
 translation_bank = all_translation_banks['llama']               
     
-lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
+lang2name = {
+    'fr': 'Français', 
+    'de': 'Deutsch', 
+    'en': 'English', 
+    'zh': '中文', 
+    'ru': 'Русский'
+}
 
 # all_translation_bank = [
 #     {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
@@ -129,7 +128,7 @@ assert check_bank_valid(translation_bank), f"Translation bank contains invalid t
 
 def remove_dup_translation(df):
     # Filter columns list based on columns present in the DataFrame
-    valid_columns = [col for col in language_labels if col in df.columns]
+    valid_columns = [col for col in lang2name if col in df.columns]
     
     # Apply a function across the DataFrame rows
     #filtered_df = df[df.apply(lambda row: len(set(row[valid_columns])) == len(valid_columns), axis=1)]
@@ -141,14 +140,10 @@ def remove_dup_translation(df):
     
     return filtered_df
 
-# %%
     
-def printd(*args, **kwargs):
-    # Check if '__DEBUG__' is in the global namespace and if it is set to True
-    if globals().get('__DEBUG__', False):
-        print("DEBUG:", end=" ")
-        print(*args, **kwargs)
+
 # %%
+
 @torch.no_grad()
 def translate(src_words, 
               src_lang, 
@@ -169,71 +164,43 @@ def translate(src_words,
     
     threshold = 0
 
-    def process_suffix_toks(suffix_toks):
-        if "Llama-2" in model.cfg.model_name:
-            assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
-            suffix_toks = suffix_toks[:, 1:]
-            
-        elif "gemma" in model.cfg.model_name:
-            pass 
-        
-        else:
-            raise ValueError(f"Check {model.cfg.model_name} tokenization first, add case to make_synth_dataset")
-        if debug:
-            printd(suffix_toks)
-        return suffix_toks
     
-    def run(src_words, src_lang, dest_lang):
+    # def run(src_words : List[str] , 
+    #         src_lang : str, 
+    #         dest_lang : str
+    # ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         
-        all_probs = []
-        all_toks = []
+    # TODO: Consider factoring out this code into a function
+    # ====================================================
+    all_probs = []
+    all_toks = []
+    
+    prefix = gen_data.generate_translation_prompt(None, src_lang, dest_lang, translations = translation_bank)
+    prefix_tok = model.tokenizer.encode(prefix, return_tensors="pt").to(device)
+    
+    kv_cache = prefix.gen_kv_cache(prefix_tok, model)
+    
+    suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang) #suffixes will have leading space for gemma
+    suffix_toks = prefix.tokenize_suffixes(suffixes, model.tokenizer)
+    suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
+    
+    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
+    
+    for batch in runner:
+        #broadcast_kv_cache(kv_cache, len(batch))
+        #batch = batch.to(device)
+        logits = prefix.run_with_kv_cache(batch, kv_cache, model)[:, -1].detach() # model returns (batch, seq, dvocab)
+        probs = torch.softmax(logits, dim=-1)
+        max_probs, max_tokens = torch.max(probs, dim=-1)
         
-        kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
-        prefix = gen_data.generate_translation_prompt(None, src_lang, dest_lang, translations = translation_bank)
-        prefix_tok = model.tokenizer.encode(prefix, return_tensors="pt").to(device)
-        model(prefix_tok, past_kv_cache = kv_cache) #fill kv_cache
-        kv_cache.freeze()
+        all_probs.append(max_probs)
+        all_toks.append(max_tokens)
+        runner.update(len(batch))
         
-        suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang) #suffixes will have leading space for gemma
-        global raw_suffix_toks
-        raw_suffix_toks, attention_mask = model.tokenizer(suffixes, add_special_tokens=False, return_tensors="pt", padding = True).values() #remove start of sequence character
-        good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
-        if torch.any(attention_mask == 0):
-            printd("Attention mask has zeros")
-            # assume that most common number of tokens is correct
-            # we only get more tokens if somethign screwed up and a chinese character was sampled
-            # when it shouldn't have, so take the ids with shortest attention mask
-            counts = attention_mask.sum(dim=1)
-            correct_count = torch.mode(counts, dim=0).values
-            good_idx = counts == correct_count
-            # global bad_idx
-            # bad_idx = torch.where(counts != correct_count)
-            
-            suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
-            assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
-        else:
-            suffix_toks = raw_suffix_toks
-        
-        suffix_toks = suffix_toks.to(device)
-        suffix_toks = process_suffix_toks(suffix_toks)
-        suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
-        
-        runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
-        
-        for batch in runner:
-            broadcast_kv_cache(kv_cache, len(batch))
-            batch = batch.to(device)
-            logits = model(batch, past_kv_cache = kv_cache)[:, -1].detach()  # model returns (batch, seq, dvocab)
-            probs = torch.softmax(logits, dim=-1)
-            max_probs, max_tokens = torch.max(probs, dim=-1)
-            
-            all_probs.append(max_probs)
-            all_toks.append(max_tokens)
-            runner.update(len(batch))
-            
-        all_probs = torch.cat(all_probs, dim=0)
-        all_toks = torch.cat(all_toks, dim=0)
-        return all_probs, all_toks, suffix_toks, good_idx
+    all_probs = torch.cat(all_probs, dim=0)
+    all_toks = torch.cat(all_toks, dim=0)
+    return all_probs, all_toks, suffix_toks, good_idx
+    # ====================================================
 
     # if debug:
     #     for src_word in src_words:
@@ -303,50 +270,27 @@ def verify_zh(df):
     return df
 
 
-def auto_translate(trans_thresh = 0.5, **kwargs):
+def auto_translate(**kwargs):
 
     en_words = en_tokens()
-    
-
     bank = {}
 
     print(f"Translation Bank: {translation_bank}")
 
+    for lang in lang2name:
+        if lang == 'en':
+            continue
+        bank[f"en_to_{lang}"] = translate(en_words, 'en', lang, **kwargs)
+        
+    bank["en_to_zh"] = verify_zh(bank["en_to_zh"]) # remove non-chinese characters
 
-    en_to_zh = translate(en_words, 'en', 'zh', **kwargs)
-    en_to_zh = verify_zh(en_to_zh) # remove non-chinese characters
-    en_to_fr = translate(en_words, 'en', 'fr', **kwargs)
-    en_to_de = translate(en_words, 'en', 'de', **kwargs)
-    en_to_ru = translate(en_words, 'en', 'ru', **kwargs)
+    df_all = gen_data.merge_dfs(bank.values())
 
-  
-    #filtered_df.to_csv(os.path.join(save_dir, 'llama2_filtered_30_tol.csv'), index=False)
-    
-    bank["en_to_zh"] = en_to_zh
-    bank["en_to_fr"] = en_to_fr
-    bank["en_to_de"] = en_to_de
-    bank["en_to_ru"] = en_to_ru
-    
-    
-    
-    all = pd.merge(en_to_zh, en_to_fr, on=['en','en_tok'], how='inner')
-    all = pd.merge(all, en_to_de, on=['en','en_tok'], how='inner')
-    all = pd.merge(all, en_to_ru, on=['en','en_tok'], how='inner')
-
-    print(f"Merged size {len(all)}")
-    print(all[:10])
+    print(f"Merged size {len(df_all)}")
+    print(df_all[:10])
     # Save filtered_df dataframe
-    all = remove_dup_translation(all)
-    mask = all.filter(like='_prob').gt(trans_thresh).all(axis=1)
-    # Filter the DataFrame using the mask
-    filtered_df = all[mask]
-    filtered_df.reset_index(drop=True, inplace=True)
-    
-    
-    
-    bank["all"] = all
-    bank["filtered"] = filtered_df
-
+    df_all = gen_data.remove_dups(df_all)
+    bank["all"] = df_all
     return bank
 # %%
 # en_words = en_tokens()

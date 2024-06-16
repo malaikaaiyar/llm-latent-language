@@ -159,7 +159,7 @@ class Config:
         default=0.5,
         metadata={"help": "Threshold for translation quality."}
 )
-
+LOAD_MODEL = False # only for debugging
 cfg = Config()
 cfg = try_parse_args(cfg)
 cfg_dict = asdict(cfg)
