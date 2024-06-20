@@ -75,34 +75,6 @@ def write_log(layer_log2, cfg, info = {}):
             f.write(f"{key}: {val}\n")
     print("Done!")
 
-@torch.no_grad()
-def measure_performance(df, model, batch_size = 64, src_lang = None, dest_lang = None, **kwargs): 
-    assert src_lang is not None and dest_lang is not None, "src_lang and dest_lang must be provided"
-    correct = 0
-    total_loss = 0
-    runner = tqdm(dataset)
-    device = next(model.parameters()).device
-    tokenizer = model.tokenizer
-    
-    prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
-    kv_cache = prefix.gen_kv_cache(prompt, model)
-    suffixes = gen_data.generate_common_suffixes(cfg)
-    suffix_toks = prefix.tokenize_suffixes(suffixes, model.tokenizer)
-    
-    target_toks = torch.LongTensor(df[f'{dest_lang}_toks'])
-    tensor_dataset = TensorDataset(suffix_toks, target_toks)
-    dataloader = DataLoader(tensor_dataset, batch_size=batch_size)
-    runner = tqdm(dataset, total=len(dataset), desc="Measuring performance", position=0, leave=True)
-    
-    loss = torch.nn.CrossEntropyLoss()
-    
-    for suffix, target in runner:
-        logits, _ = prefix.run_with_kv_cache(suffix, kv_cache, model)[:, -1].detach()
-        total_loss += loss(logits, target)
-        correct += (logits.argmax(dim=-1) == target).sum()
-        runner.set_description(f"Accuracy: {correct.item() / (i+1):.3f}, Loss: {loss.item() / (i+1):.3f}")
-    return correct / len(dataset), loss / len(dataset)
-
 
 def proj(x : Float[Tensor, "... dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "... dmodel"]:
     # Computes the projection of x onto the subspace spanned by the columns of Y

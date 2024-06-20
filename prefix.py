@@ -1,10 +1,15 @@
 # %%
 import torch
 from dq_utils import printd
-from typing import List
+from typing import List, Tuple, Callable
+from jaxtyping import Int
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformerKeyValueCache, HookedTransformer
-
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
+import gen_data
+import prefix
+from collections import namedtuple
 # %%
 
 __DEBUG__ = True
@@ -38,7 +43,8 @@ def broadcast_kv_cache(kv_cache : HookedTransformerKeyValueCache, n : int):
         kv_cache.previous_attention_mask = kv_cache.previous_attention_mask.expand(n, -1)
 
 
-def process_suffix_toks(suffix_toks):
+def process_suffix_toks(suffix_toks, model):
+    vocab = model.tokenizer.get_vocab()
     if "Llama-2" in model.cfg.model_name:
         assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
         suffix_toks = suffix_toks[:, 1:]
@@ -51,14 +57,15 @@ def process_suffix_toks(suffix_toks):
     printd(suffix_toks)
     return suffix_toks
 
-def tokenize_suffixes(suffixes : List[str], tokenizer):
-    raw_suffix_toks, attention_mask = tokenizer(suffixes, 
+def tokenize_suffixes(suffixes : List[str], model):
+    device = next(model.parameters()).device
+    raw_suffix_toks, attention_mask = model.tokenizer(suffixes, 
                                                     add_special_tokens=False, 
                                                     return_tensors="pt", 
                                                     padding = True).values() #remove start of sequence character
     good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
     if torch.any(attention_mask == 0):
-        printd("Attention mask has zeros")
+        print("Warning: tokenize_suffixes - Attention mask has zeros")
         # assume that most common number of tokens is correct
         # we only get more tokens if something screwed up and a chinese character was sampled
         # when it shouldn't have, so take the ids with shortest attention mask
@@ -74,7 +81,7 @@ def tokenize_suffixes(suffixes : List[str], tokenizer):
         suffix_toks = raw_suffix_toks
     
     suffix_toks = suffix_toks.to(device)
-    suffix_toks = process_suffix_toks(suffix_toks)
+    suffix_toks = process_suffix_toks(suffix_toks, model)
     return suffix_toks, good_idx
     
 def gen_kv_cache(prompt : str | Int[Tensor, "batch seq"] | Int[Tensor, "seq"],
@@ -95,6 +102,8 @@ def gen_kv_cache(prompt : str | Int[Tensor, "batch seq"] | Int[Tensor, "seq"],
     kv_cache.freeze()
     return kv_cache
     
+RunWithKVCacheResult = namedtuple('RunWithKVCacheResult', ['logits', 'cache'], defaults=[None])
+    
 def run_with_kv_cache(tokens : Int[Tensor, "batch seq"],
                     kv_cache : HookedTransformerKeyValueCache,
                     model : HookedTransformer,
@@ -106,13 +115,13 @@ def run_with_kv_cache(tokens : Int[Tensor, "batch seq"],
     broadcast_kv_cache(kv_cache, len(tokens))
     tokens = tokens.to(device)
     
-    with model.hooks(fwd_hooks, hooks_filter):
-        if hooks_filter == []:
-            logits = model(batch, past_kv_cache = kv_cache)
-            return logits, None
+    with model.hooks(fwd_hooks, names_filter):
+        if names_filter == []:
+            logits = model(tokens, past_kv_cache=kv_cache)
+            return RunWithKVCacheResult(logits=logits, cache=None)
         else:
-            return model.run_with_cache(batch, past_kv_cache = kv_cache, names_filter = names_filter)
-    
+            logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
+            return RunWithKVCacheResult(logits=logits, cache=cache)    
     
 def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
                            suffixes_toks : Int[Tensor, "batch seq"],
@@ -134,7 +143,7 @@ def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
     runner = tqdm(suffix_toks_batched, total=len(suffixes_toks), desc=desc, position=position, leave=leave)
     
     for batch in runner:
-        logits = run_with_kv_cache(batch, kv_cache, model, fwd_hooks, hooks_filter)[:, -1].detach()
+        logits = run_with_kv_cache(batch, kv_cache, model, fwd_hooks, hooks_filter).logits[:, -1].detach()
         probs = torch.softmax(logits, dim=-1)
         max_probs, max_tokens = torch.max(probs, dim=-1)
         
@@ -145,3 +154,37 @@ def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
     all_probs = torch.cat(all_probs, dim=0)
     all_toks = torch.cat(all_toks, dim=0)
     return all_probs, all_toks
+
+@torch.no_grad()
+def measure_performance(df, model, **kwargs): 
+    src_lang = kwargs.get("src_lang", None)
+    dest_lang = kwargs.get("dest_lang", None)
+    batch_size = kwargs.get("batch_size", 1)
+    device = next(model.parameters()).device
+    assert src_lang is not None and dest_lang is not None, "src_lang and dest_lang must be provided"
+    correct = 0
+    processed = 0
+    total_loss = 0
+    tokenizer = model.tokenizer
+    
+    prompt = gen_data.generate_translation_prompt(None, src_lang, dest_lang)
+    kv_cache = prefix.gen_kv_cache(prompt, model)
+    suffixes = gen_data.generate_common_suffixes(df[src_lang], **kwargs)
+    suffix_toks, _ = prefix.tokenize_suffixes(suffixes, model)
+    
+    target_toks = torch.LongTensor(df[f'{dest_lang}_tok']).to(device)
+    tensor_dataset = TensorDataset(suffix_toks, target_toks)
+    dataloader = DataLoader(tensor_dataset, batch_size=batch_size)
+    runner = tqdm(dataloader, total=len(dataloader), desc="Measuring performance", position=0, leave=True)
+    
+    loss = torch.nn.CrossEntropyLoss()
+    
+    for i, (suffix, target) in enumerate(runner):
+        logits = prefix.run_with_kv_cache(suffix, kv_cache, model).logits[:, -1].detach()
+        total_loss += loss(logits, target)
+        correct += (logits.argmax(dim=-1) == target).sum()
+        processed += len(target)
+        runner.set_description(f"Accuracy: {correct.item() / processed:.3f}, Loss: {total_loss.item() / (i+1):.3f}")
+    return correct / len(df), total_loss / len(dataloader)
+
+# %%

@@ -35,6 +35,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # ==== Custom Libraries ====
 import gen_data
+import prefix
 from tuned_lens_wrap import load_tuned_lens
 #from reverse_tuned_lens import ReverseLens
 import dq_utils
@@ -163,7 +164,7 @@ class Config:
         default=0.5,
         metadata={"help": "Threshold for translation quality."}
 )
-LOAD_MODEL = False # only for debugging
+#LOAD_MODEL = False # only for debugging
 cfg = Config()
 cfg = try_parse_args(cfg)
 cfg_dict = asdict(cfg)
@@ -253,13 +254,14 @@ def main(dataset, cfg):
 %load_ext autoreload
 %autoreload 2
 # %%
-import gen_data
+
+cfg.dest_lang = 'de'
+cfg_dict = asdict(cfg)
 prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
 raw_dataset = gen_data.load_dataset(cfg.dataset_path, cfg.src_lang, cfg.dest_lang, cfg.latent_lang)
 raw_dataset = gen_data.remove_dups(raw_dataset)
-dataset = gen_data.keep_correct(raw_dataset, prompt, cfg) # TODO
-#hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
-measure_performance(correct_dataset, model) #TODO fix
+correct_dataset = gen_data.keep_correct(raw_dataset, model, **cfg_dict) 
+prefix.measure_performance(correct_dataset, model, **cfg_dict)
 
 # %%
 if False:

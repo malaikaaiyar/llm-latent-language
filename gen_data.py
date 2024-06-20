@@ -207,7 +207,7 @@ def remove_dups(df):
         if len(set([row[col].split('▁')[-1].lower() for col in cols])) < len(cols):
             dup_row.append(idx)
     df = df.drop(dup_row)
-    return df
+    return df.reset_index()
 
 def merge_dfs(list_df, on = ['en', 'en_tok']):
     merged_df = list_df[0]
@@ -240,63 +240,62 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
    
     all_df = merge_dfs(datasets)
     
-    lang_col = [col for col in all_df.columns if cl in lang2name]
+    lang_col = [col for col in all_df.columns if col in lang2name]
     tok_col = [col for col in all_df.columns if '_tok' in col]
     other_col = [col for col in all_df.columns if col not in lang_col + tok_col]
     new_order = sorted(lang_col) + sorted(tok_col) + other_col 
     all_df = all_df[new_order]
     return remove_dups(all_df)
     
-
-
-                                           
-# %%
-
 def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
-        device = next(model.parameters()).device
-        
-        def run(src_lang, dest_lang):    
-            prompt = generate_translation_prompt(None, src_lang=src_lang, dest_lang=dest_lang)
-            kv_cache = prefix.gen_kv_cache(prompt, model)
-            suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
-            suffix_toks, keep_idx = prefix.tokenize_suffixes(suffix_toks, model.tokenizer)
-            all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
-            
-            target = torch.LongTensor(df[f'{dest_lang}_tok'])[keep_idx]
-            
-            idx = (all_probs > trans_thresh) & (all_toks == target)
-            
-            return all_probs[idx], all_toks[idx], suffix_toks[idx], idx
-            
-            
-        to_dest_probs, to_dest_tokens, src_suffix_toks, idx = run(src_lang, dest_lang)
-        
-        print(f"Kept {len(to_dest_probs)} / {len(df)} translations")
+    device = next(model.parameters()).device
 
-        rev_src_probs, rev_src_tokens, dest_suffix_toks, cidx = run(dest_lang, src_lang)
-
-        dest_tokens = dest_suffix_toks[:, 0] # ???
+    def run(src_words, src_lang, dest_lang):    
+        prompt = generate_translation_prompt(None, src_lang=src_lang, dest_lang=dest_lang)
+        kv_cache = prefix.gen_kv_cache(prompt, model)
+        suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
+        suffix_toks, keep_idx = prefix.tokenize_suffixes(suffixes, model)
+        all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
         
-        print(model.tokenizer.convert_ids_to_tokens(src_tokens[:50]))
-        print(model.tokenizer.convert_ids_to_tokens(dest_tokens[:50]))
-        print(model.tokenizer.convert_ids_to_tokens(rev_src_tokens[:50]))
-
+        mask_all_probs = -torch.ones_like(all_probs)
+        mask_all_probs[keep_idx] = all_probs
         
-        print(f"{src_lang} = {dest_lang} Correct translations: {len(rev_src_probs)} / {len(src_words)}")
+        unk_id = model.tokenizer.convert_tokens_to_ids('<unk>')
         
-        data = {
-            src_lang: model.tokenizer.convert_ids_to_tokens(src_tokens[cidx]),
-            dest_lang: model.tokenizer.convert_ids_to_tokens(dest_tokens[cidx]),
-            src_lang + "_tok" : src_tokens[cidx].cpu(),
-            dest_lang + "_tok" : dest_tokens[cidx].cpu(),
-            f'{src_lang}_to_{dest_lang}_prob': to_dest_probs[cidx].cpu(),
-            f'{dest_lang}_to_{src_lang}_prob': rev_src_probs[cidx].cpu()
-        }
+        mask_all_toks = torch.zeros_like(all_toks) + unk_id
+        mask_all_toks[keep_idx] = all_toks
+        
+        mask_suffix_toks = torch.zeros_like(suffix_toks[:, 0]) + unk_id
+        mask_suffix_toks[keep_idx] = suffix_toks[:, 0]
+        
+        # Keep outputs the same size, but mask out the ones that are not in the vocab
+        # keep_idx = boolean_mask of which ones are in the vocab
+        return mask_all_probs, mask_all_toks, mask_suffix_toks, keep_idx
+        
+        # target = torch.LongTensor(df[f'{dest_lang}_tok'])[keep_idx]
+        
+        # idx = (all_probs > trans_thresh) & (all_toks == target.to(device))
 
-        df = pd.DataFrame(data)
-        df = remove_dups(df)
-        return df
+    to_dest_probs, to_dest_tokens, df_src_toks, idx_to = run(df[src_lang], src_lang, dest_lang)
+    to_dest_strs = model.tokenizer.convert_ids_to_tokens(to_dest_tokens)
+    rev_src_probs, rev_src_tokens, df_dest_toks, idx_from = run(to_dest_strs, dest_lang, src_lang)
+    
+    # dataset has set of (src, dest, latent) triples
+    dest_thresh_idx = (to_dest_probs > trans_thresh) # src -> dest translation probability is above threshold
+    rev_thresh_idx = (rev_src_probs > trans_thresh) # dest -> src translation probability is above threshold
+    rev_match_df = (df_src_toks == rev_src_tokens) # src -> dest' -> src' translation, src == src'
+    dest_match_df = (df_dest_toks == to_dest_tokens) # src -> dest' -> src' translation, dest == dest'
+    
+    cidx = dest_thresh_idx & rev_thresh_idx & rev_match_df & dest_match_df
+    print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(cidx)}")
 
+    new_df = df[cidx.cpu().numpy()].copy()
+    new_df.loc[:, f'{src_lang}_to_{dest_lang}_prob'] = to_dest_probs[cidx].cpu().numpy()
+    new_df.loc[:, f'{dest_lang}_to_{src_lang}_prob'] = rev_src_probs[cidx].cpu().numpy()
+    return new_df
+
+#keep_correct(raw_dataset, model, **cfg_dict)
+# %%
 
 # def merge_datasets(df_src, df_dest, df_latent, vocab, **kwargs):
 #     """
@@ -535,44 +534,44 @@ def replace_source_word(prompt, new_french_word):
     return updated_prompt
 
 
-def filter_correct(prompt, dataset, model, tokenizer):
-    """
-    Purges the dataset by removing instances that the mode doesn't predict correctly,
-    both for the original and the counterfactual prompts.
+# def filter_correct(prompt, dataset, model, tokenizer):
+#     """
+#     Purges the dataset by removing instances that the mode doesn't predict correctly,
+#     both for the original and the counterfactual prompts.
 
-    Args:
-        dataset (list): The input dataset to be purged.
-        model: The language model used for prediction.
-        tokenizer: The tokenizer used to encode the input prompts.
+#     Args:
+#         dataset (list): The input dataset to be purged.
+#         model: The language model used for prediction.
+#         tokenizer: The tokenizer used to encode the input prompts.
 
-    Returns:
-        list: The purged dataset.
-    """
-    prompt_tok = tokenizer.encode(prompt, return_tensors='pt')
-    generate_common_suffixes(dataset, tokenizer)
+#     Returns:
+#         list: The purged dataset.
+#     """
+#     prompt_tok = tokenizer.encode(prompt, return_tensors='pt')
+#     generate_common_suffixes(dataset, tokenizer)
     
-    device = next(model.parameters()).device
-    correct = 0
-    tokenizer = model.tokenizer
-    runner = tqdm(dataset)
-    for (i, d) in enumerate(runner):
-        prompt = d['prompt']
-        prompt_tok = tokenizer.encode(prompt, return_tensors='pt').to(device)
-        y_guess = model(prompt_tok)[0, -1].argmax(-1).item()
-        if y_guess not in d['out_ids']:
-            #print("failed correct")
-            continue
-        cf_prompt = replace_source_word(prompt, d['alt_in_str'])
-        cf_prompt_tok = tokenizer.encode(cf_prompt, return_tensors='pt').to(device)
-        y_guess_cf = model(cf_prompt_tok)[0, -1].argmax(-1).item()
-        if y_guess_cf in d['alt_out_ids']:
-            correct += 1
-            new_dataset.append(d)
-        #else:
-        #    print("failed alt_correct")
-        runner.set_description(f"filter_correct keeping: {correct}/{len(dataset)}")
-    print(f"Filter dataset: {correct}/{len(dataset)} correct")
-    return new_dataset
+#     device = next(model.parameters()).device
+#     correct = 0
+#     tokenizer = model.tokenizer
+#     runner = tqdm(dataset)
+#     for (i, d) in enumerate(runner):
+#         prompt = d['prompt']
+#         prompt_tok = tokenizer.encode(prompt, return_tensors='pt').to(device)
+#         y_guess = model(prompt_tok)[0, -1].argmax(-1).item()
+#         if y_guess not in d['out_ids']:
+#             #print("failed correct")
+#             continue
+#         cf_prompt = replace_source_word(prompt, d['alt_in_str'])
+#         cf_prompt_tok = tokenizer.encode(cf_prompt, return_tensors='pt').to(device)
+#         y_guess_cf = model(cf_prompt_tok)[0, -1].argmax(-1).item()
+#         if y_guess_cf in d['alt_out_ids']:
+#             correct += 1
+#             new_dataset.append(d)
+#         #else:
+#         #    print("failed alt_correct")
+#         runner.set_description(f"filter_correct keeping: {correct}/{len(dataset)}")
+#     print(f"Filter dataset: {correct}/{len(dataset)} correct")
+#     return new_dataset
     
     
     
