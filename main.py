@@ -139,14 +139,18 @@ class Config:
         default='DUMMY_NAME',
         metadata={"help": "Basename for log files."}
 )
-    metric: str = field(
-        default='p_alt',
-        metadata={"help": "Metric to optimize for [p_alt | p_out | lp_diff]."}
+    batch_size: int = field(
+        default=32,
+        metadata={"help": "Batch size for processing."}
 )
-    metric_goal: str = field(
-        default='max',
-        metadata={"help": "Goal for the optimization (max or mi)."}
-)
+#     metric: str = field(
+#         default='p_alt',
+#         metadata={"help": "Metric to optimize for [p_alt | p_out | lp_diff]."}
+# )
+#     metric_goal: str = field(
+#         default='max',
+#         metadata={"help": "Goal for the optimization (max or mi)."}
+# )
     # rev_lens_scale: float = field(
     #     default=2,
     #     metadata={"help": "Scale factor for reverse lens."}
@@ -211,10 +215,10 @@ def main(dataset, cfg):
     import intervention
     from logit_lens import get_logits, plot_logit_lens_latents
 
-    if cfg.metric_goal == 'max':
-        best_stats = {cfg.metric: -np.inf}
-    else:
-        best_stats = {cfg.metric: np.inf}
+    # if cfg.metric_goal == 'max':
+    #     best_stats = {cfg.metric: -np.inf}
+    # else:
+    #     best_stats = {cfg.metric: np.inf}
         
     for start_layer in range(start_lower,start_upper):
         for end_layer in range(end_lower, end_upper):
@@ -255,9 +259,10 @@ raw_dataset = gen_data.load_dataset(cfg.dataset_path, cfg.src_lang, cfg.dest_lan
 raw_dataset = gen_data.remove_dups(raw_dataset)
 dataset = gen_data.keep_correct(raw_dataset, prompt, cfg) # TODO
 #hf_model = AutoModelForCausalLM.from_pretrained(model_name, use_auth_token=hf_token, load_in_8bit=True)
-#measure_performance(correct_dataset, model) #TODO fix
+measure_performance(correct_dataset, model) #TODO fix
 
 # %%
-layer_log2, info = main(dataset, cfg)
-dq_utils.write_log(layer_log2, cfg, info)
+if False:
+    layer_log2, info = main(dataset, cfg)
+    dq_utils.write_log(layer_log2, cfg, info)
     

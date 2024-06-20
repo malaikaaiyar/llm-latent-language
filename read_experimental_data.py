@@ -9,7 +9,7 @@ import itertools
 import warnings
 # %%
 
-def plot_heatmap_on_ax(data, ax, metric='p_alt', z_value=None, vmin=None, vmax=None):
+def plot_heatmap_on_ax(data, ax, metric='p_alt', z_value=None, vmin=None, vmax=None, marcus=True):
     # Determine if the data includes a z-value (3D)
     is_3d = len(next(iter(data.keys()))) == 3
     
@@ -23,7 +23,7 @@ def plot_heatmap_on_ax(data, ax, metric='p_alt', z_value=None, vmin=None, vmax=N
     # Populate heatmap data
     for key, metrics in data.items():
         x, y = key[0], key[1]
-        if y < x+1:  # Skip invalid entries
+        if y < x + 1:  # Skip invalid entries
             continue
         if is_3d:
             z = key[2]
@@ -48,18 +48,23 @@ def plot_heatmap_on_ax(data, ax, metric='p_alt', z_value=None, vmin=None, vmax=N
     ax.set_xlabel('Start Layer')
     ax.set_ylabel('End Layer')
     
-    # Adjust tick marks to be centered in cells
-    ax.set_xticks(np.arange(len(x_values)) + 0.5, minor=False)
-    ax.set_yticks(np.arange(len(y_values)) + 0.5, minor=False)
-    ax.set_xticklabels(x_values, fontsize=6)
-    ax.set_yticklabels(y_values, fontsize=6)
+    # Adjust tick marks and font size
+    tick_spacing = 5 if marcus else 1
+    ax.set_xticks(np.arange(0, len(x_values), tick_spacing) + 0.5, minor=False)
+    ax.set_yticks(np.arange(0, len(y_values), tick_spacing) + 0.5, minor=False)
+    ax.set_xticklabels(x_values[::tick_spacing], fontsize=10)  # Increased font size
+    ax.set_yticklabels(y_values[::tick_spacing], fontsize=10)  # Increased font size
     
-    # Align grid lines with the data indices
-    ax.set_xticks(np.arange(len(x_values)), minor=True)
-    ax.set_yticks(np.arange(len(y_values)), minor=True)
-    ax.tick_params(which='minor', length=0)
-    ax.grid(True, which='minor', color='grey', linestyle='-', linewidth=0.5)
-    
+    if not marcus:
+        # Align grid lines with the data indices if marcus is False
+        ax.set_xticks(np.arange(len(x_values)), minor=True)
+        ax.set_yticks(np.arange(len(y_values)), minor=True)
+        ax.tick_params(which='minor', length=0)
+        ax.grid(True, which='minor', color='grey', linestyle='-', linewidth=0.5)
+    else:
+        # Remove grid lines if marcus is True
+        ax.grid(False)
+        ax.invert_yaxis()
 
 def print_top_k_entries(data, sort_key, k=5, largest=True):
     """
@@ -115,6 +120,8 @@ def plot_files_in_folder(folder_path,
     if num_files == 0:
         print("No matching .pkl files found in the directory.")
         return
+    else:
+        print(f"Found {num_files} matching .pkl files.")
     
     # Determine grid size for plotting
     cols = min(cols, num_files)  # No more than 4 columns
@@ -129,8 +136,11 @@ def plot_files_in_folder(folder_path,
     else:
         vmin, vmax = None, None
     
+    
+    
+    
     # Plot each matching .pkl file on its corresponding axes
-    for i, filename in enumerate(order(files)):
+    for i, filename in enumerate(order(files, filename_pattern)):
         file_path = os.path.join(folder_path, filename)
         
         # Load data from .pkl file
@@ -145,8 +155,8 @@ def plot_files_in_folder(folder_path,
         axes[i].set_title(title_name)
     
     # Hide unused axes if any
-    for j in range(i + 1, len(axes)):
-        axes[j].axis('off')
+    # for j in range(i + 1, len(axes)):
+    #     axes[j].axis('off')
     
     # Adjust layout to prevent overlap
     plt.tight_layout()
@@ -155,9 +165,9 @@ def plot_files_in_folder(folder_path,
     if img_path:
         fig.savefig(img_path, format='svg')
 
-def group_and_interleave_filenames(filenames):
+def group_and_interleave_filenames(filenames, pattern):
     # Compile the regex pattern
-    pattern = re.compile(r'hook_reject_(.+)_(.+)_(.+)\.pkl')
+    pattern = re.compile(pattern)
     
     # Dictionary to hold lists of filenames grouped by the last entry
     grouped_files = defaultdict(list)
@@ -251,7 +261,89 @@ def plot_multiple_files(file_paths, plot_function, metric='p_alt', z_value=None,
     plt.show()
     fig.savefig(img_path, format='svg')
     
+# %%
+def format_filename2(filename):
+    # Define the regex pattern to capture the three groups in the filename
+    pattern = r'(.+)_(.+)_(.+)_(.+)\.pkl'
+    
+    # Use regex to match the pattern and capture the groups
+    match = re.match(pattern, filename)
+    
+    # Check if the match was successful
+    if match:
+        # Extract the groups
+        source, latent, target, c = match.groups()
+        
+        #hack cause I messed up the filenames
+        if c == '10':
+            c = '100'
+        elif c == '15':
+            c = '150'
+        # Return the formatted string
+        return f"Source: {source} Latent: {latent} Target: {target} c={(float(c) / 10):05.02f}"
+    else:
+        # Return an error message if the pattern does not match
+        print(f"{filename} error")
+        raise ValueError("Invalid filename format")
+        return "Invalid filename format"
+# %%
 
+def icml_plots():
+
+    paths = ['out/reject_lang_sweep/hook_reject_fr_en_zh.pkl']
+    plot_multiple_files(paths, plot_heatmap_on_ax, metric='p_out', img_path = 'icml-llama-english/img/hook_reject_fr_en_zh.svg')
+
+    paths = ['out/steer_28_May/fr_en_zh_80.pkl']
+    plot_multiple_files(paths, plot_heatmap_on_ax, metric='p_out', img_path = 'icml-llama-english/img/steer_fr_en_zh_50_out.svg')
+    plot_multiple_files(paths, plot_heatmap_on_ax, metric='p_alt', img_path = 'icml-llama-english/img/steer_fr_en_zh_50_alt.svg')
+    plot_multiple_files(paths, plot_heatmap_on_ax, metric='lp_diff', img_path = 'icml-llama-english/img/steer_fr_en_zh_50_diff.svg')
+# %%
+
+#def icml_appendix():
+
+    
+for lat in ['en', 'de']:
+    
+    print(f"steer {lat} p_out related")
+    plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'p_out', filename_pattern=f'(\w+)_{lat}_(\w+)_(\d+).pkl', 
+                        cols=4, img_path = f'icml-llama-english/img/steer_28_May_{lat}_p_out.svg',
+                        title_func=format_filename2, order = lambda x,y : sorted(x))
+
+    print(f"steer {lat} p_alt related")
+    plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'p_alt', filename_pattern=f'(\w+)_{lat}_(\w+)_(\d+).pkl', 
+                        cols=4, img_path = f'icml-llama-english/img/steer_28_May_{lat}_p_alt.svg',
+                        title_func=format_filename2, order = lambda x,y : sorted(x))
+
+    print(f"steer {lat} lp_diff related")
+    plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'lp_diff', filename_pattern=f'(\w+)_{lat}_(\w+)_(\d+).pkl', 
+                        cols=4, img_path = f'icml-llama-english/img/steer_28_May_{lat}_lp_diff.svg',
+                      title_func=format_filename2, order = lambda x,y : sorted(x))
+
+# print("steer p_alt related")
+# plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'p_alt', filename_pattern='(\w+)_(\w{2})_(\w+)_(\d+).pkl', 
+#                      cols=4, img_path = 'icml-llama-english/img/steer_28_May_p_alt.svg',
+#                       title_func=format_filename2, order= group_and_interleave_filenames)
+
+# %%
+
+print("steer lp_diff related")
+plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'lp_diff', filename_pattern='(\w+)_(\w{2})_(\w+)_(\d+).pkl', 
+                     cols=4, img_path = 'icml-llama-english/img/steer_28_May_lp_diff.svg',
+                      title_func=format_filename2, order= group_and_interleave_filenames)
+
+# print("steer p_out unrelated")
+# plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'p_out', filename_pattern='(\w+)_(\w{2})alt_(\w+)_(\d+).pkl', 
+#                      cols=4, img_path = 'icml-llama-english/img/steer_28_May_alt_p_out.svg',
+#                       title_func=format_filename2, order= group_and_interleave_filenames)
+
+# print("steer p_alt unrelated")
+# plot_files_in_folder('out/steer_28_May', plot_heatmap_on_ax, metric = 'p_alt', filename_pattern='(\w+)_(\w{2})alt_(\w+)_(\d+).pkl', 
+#                      cols=4, img_path = 'icml-llama-english/img/steer_28_May_alt_p_alt.svg',
+#                       title_func=format_filename2, order= group_and_interleave_filenames)
+# %%
+
+
+# %%
 # # Example usage:
 # paths = ['out/reject_lang_sweep/hook_reject_fr_en_zh.pkl']
 # plot_multiple_files(paths, plot_heatmap_on_ax, metric='p_out', img_path = 'icml-llama-english/img/hook_reject_fr_en_zh.svg')
@@ -292,23 +384,7 @@ def plot_multiple_files(file_paths, plot_function, metric='p_alt', z_value=None,
 # %%
 
 
-def format_filename2(filename):
-    # Define the regex pattern to capture the three groups in the filename
-    pattern = r'(.+)_(.+)_(.+)_(.+)\.pkl'
-    
-    # Use regex to match the pattern and capture the groups
-    match = re.match(pattern, filename)
-    
-    # Check if the match was successful
-    if match:
-        # Extract the groups
-        source, latent, target, c = match.groups()
-        
-        # Return the formatted string
-        return f"Source: {source} Latent: {latent} Target: {target} c={(float(c) / 10):.02f}"
-    else:
-        # Return an error message if the pattern does not match
-        return "Invalid filename format"
+
 
 # %%
 

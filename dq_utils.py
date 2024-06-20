@@ -14,6 +14,8 @@ import pickle
 import pprint
 from dataclasses import asdict
 import numpy as np
+import gen_data
+import prefix
 
 def printd(*args, **kwargs):
     # Check if '__DEBUG__' is in the global namespace and if it is set to True
@@ -73,50 +75,33 @@ def write_log(layer_log2, cfg, info = {}):
             f.write(f"{key}: {val}\n")
     print("Done!")
 
-def measure_performance(dataset, model):
+@torch.no_grad()
+def measure_performance(df, model, batch_size = 64, src_lang = None, dest_lang = None, **kwargs): 
+    assert src_lang is not None and dest_lang is not None, "src_lang and dest_lang must be provided"
     correct = 0
-    loss = 0
+    total_loss = 0
     runner = tqdm(dataset)
     device = next(model.parameters()).device
     tokenizer = model.tokenizer
-    for i,d in enumerate(runner):
-        targets = d['out_ids'].to(device)
-        tok_prompt = tokenizer.encode(d['prompt'], return_tensors="pt").to(device)
-        logits = model(tok_prompt)[0, -1]
-        nll = -torch.log_softmax(logits, dim=-1)
-        loss += torch.min(nll[targets])
-        correct += torch.any(logits.argmax(-1) == targets)
+    
+    prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
+    kv_cache = prefix.gen_kv_cache(prompt, model)
+    suffixes = gen_data.generate_common_suffixes(cfg)
+    suffix_toks = prefix.tokenize_suffixes(suffixes, model.tokenizer)
+    
+    target_toks = torch.LongTensor(df[f'{dest_lang}_toks'])
+    tensor_dataset = TensorDataset(suffix_toks, target_toks)
+    dataloader = DataLoader(tensor_dataset, batch_size=batch_size)
+    runner = tqdm(dataset, total=len(dataset), desc="Measuring performance", position=0, leave=True)
+    
+    loss = torch.nn.CrossEntropyLoss()
+    
+    for suffix, target in runner:
+        logits, _ = prefix.run_with_kv_cache(suffix, kv_cache, model)[:, -1].detach()
+        total_loss += loss(logits, target)
+        correct += (logits.argmax(dim=-1) == target).sum()
         runner.set_description(f"Accuracy: {correct.item() / (i+1):.3f}, Loss: {loss.item() / (i+1):.3f}")
     return correct / len(dataset), loss / len(dataset)
-
-def broadcast_kv_cache(cache : HookedTransformerKeyValueCache, n : int):
-    """
-    Broadcasts the key-value cache for parallel processing, reshaping its elements
-    from (a, b, c, d) to (n, b, c, d), assuming all elements in dimension 'a' are identical
-    and can be replicated to dimension 'n'.
-
-    Args:
-        cache (object): The key-value cache object.
-        n (int): The number of parallel processes.
-
-    Returns:
-        None
-    """
-    for e in cache:
-        if e.past_keys.dim() == 4 and e.past_keys.size(0) > 1:
-            # Assuming the first dimension has redundant copies, we take one and expand it
-            e.past_keys = e.past_keys[0].unsqueeze(0).expand(n, -1, -1, -1)
-            e.past_values = e.past_values[0].unsqueeze(0).expand(n, -1, -1, -1)
-        else:
-            # If already in correct form or not expanded, simply adjust the dimensions
-            e.past_keys = e.past_keys.expand(n, -1, -1, -1)
-            e.past_values = e.past_values.expand(n, -1, -1, -1)
-    if cache.previous_attention_mask.dim() == 2 and cache.previous_attention_mask.size(0) > 1:
-        # Similarly adjust the attention mask
-        cache.previous_attention_mask = cache.previous_attention_mask[0].unsqueeze(0).expand(n, -1)
-    else:
-        cache.previous_attention_mask = cache.previous_attention_mask.expand(n, -1)
-
 
 
 def proj(x : Float[Tensor, "... dmodel"], Y : Float[Tensor, "numvec dmodel"]) -> Float[Tensor, "... dmodel"]:

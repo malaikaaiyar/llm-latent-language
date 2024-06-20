@@ -37,7 +37,6 @@ __DEBUG__ = True
 # %%
 torch.set_grad_enabled(False)
 @dataclass
-@dataclass
 class Config:
     model_name: str = field(
         default='gemma-2b', 

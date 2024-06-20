@@ -5,8 +5,9 @@ import torch
 from dataclasses import dataclass
 import pandas as pd
 from transformers import AutoTokenizer
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from typing import List, Dict, Any
+import prefix
 # %%
 
 # Get the current working directory
@@ -239,7 +240,7 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
    
     all_df = merge_dfs(datasets)
     
-    lang_col = [col for col in all_df.columns if len(col) == 2]
+    lang_col = [col for col in all_df.columns if cl in lang2name]
     tok_col = [col for col in all_df.columns if '_tok' in col]
     other_col = [col for col in all_df.columns if col not in lang_col + tok_col]
     new_order = sorted(lang_col) + sorted(tok_col) + other_col 
@@ -251,98 +252,50 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
                                            
 # %%
 
-def keep_correct(df, prompt, src_lang = None, dest_lang = None, **kwargs):
-
-        kv_cache = HookedTransformerKeyValueCache.init_cache(model.cfg, device, 1) # flush cache
-        prefix_tok = model.tokenizer.encode(prompt, return_tensors="pt").to(device)
-        model(prefix_tok, past_kv_cache = kv_cache) #fill kv_cache
-        kv_cache.freeze()
+def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
+        device = next(model.parameters()).device
         
-        suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
-        raw_suffix_toks, attention_mask = model.tokenizer(suffixes, add_special_tokens=False, return_tensors="pt", padding = True).values() #remove start of sequence character
-        good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
-        if torch.any(attention_mask == 0):
-            printd("Attention mask has zeros")
-            # assume that most common number of tokens is correct
-            # we only get more tokens if somethign screwed up and a chinese character was sampled
-            # when it shouldn't have, so take the ids with shortest attention mask
-            counts = attention_mask.sum(dim=1)
-            correct_count = torch.mode(counts, dim=0).values
-            good_idx = counts == correct_count
-            # global bad_idx
-            # bad_idx = torch.where(counts != correct_count)
+        def run(src_lang, dest_lang):    
+            prompt = generate_translation_prompt(None, src_lang=src_lang, dest_lang=dest_lang)
+            kv_cache = prefix.gen_kv_cache(prompt, model)
+            suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
+            suffix_toks, keep_idx = prefix.tokenize_suffixes(suffix_toks, model.tokenizer)
+            all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
             
-            suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
-            assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
-        else:
-            suffix_toks = raw_suffix_toks
-        
-        suffix_toks = suffix_toks.to(device)
-        suffix_toks = process_suffix_toks(suffix_toks)
-        suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
-        
-        runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
-        
-        for batch in runner:
-            broadcast_kv_cache(kv_cache, len(batch))
-            batch = batch.to(device)
-            logits = model(batch, past_kv_cache = kv_cache)[:, -1].detach()  # model returns (batch, seq, dvocab)
-            probs = torch.softmax(logits, dim=-1)
-            max_probs, max_tokens = torch.max(probs, dim=-1)
+            target = torch.LongTensor(df[f'{dest_lang}_tok'])[keep_idx]
             
-            all_probs.append(max_probs)
-            all_toks.append(max_tokens)
-            runner.update(len(batch))
+            idx = (all_probs > trans_thresh) & (all_toks == target)
             
-        all_probs = torch.cat(all_probs, dim=0)
-        all_toks = torch.cat(all_toks, dim=0)
-        return all_probs, all_toks, suffix_toks, good_idx
+            return all_probs[idx], all_toks[idx], suffix_toks[idx], idx
+            
+            
+        to_dest_probs, to_dest_tokens, src_suffix_toks, idx = run(src_lang, dest_lang)
+        
+        print(f"Kept {len(to_dest_probs)} / {len(df)} translations")
 
-    # if debug:
-    #     for src_word in src_words:
-    #         if is_chinese_char(src_word):
-    #             assert src_word in vocab, f"Input zh string {src_word} not in vocabulary"
-    #         else:
-    #             assert "▁" + src_word in vocab, f"Input non-zh string {src_word} not in vocabulary"
-    
-    to_dest_probs, to_dest_tokens, src_suffix_toks, good_idx = run(src_words, src_lang, dest_lang)
-    
-    idx = (to_dest_probs > threshold) & good_idx.to(device)
-    to_dest_probs = to_dest_probs[idx]
-    to_dest_tokens = to_dest_tokens[idx]
-    src_tokens = src_suffix_toks[idx,0]
-    #print(f"{src_tokens.shape=}, {src_suffix_toks.shape=}")
-    
-    print(f"Kept {len(to_dest_probs)} / {len(idx)} translations")
-    to_dest_words = model.tokenizer.convert_ids_to_tokens(to_dest_tokens)
-    rev_src_probs, rev_src_tokens, dest_suffix_toks, good_idx2 = run(to_dest_words, dest_lang, src_lang)
+        rev_src_probs, rev_src_tokens, dest_suffix_toks, cidx = run(dest_lang, src_lang)
 
-    dest_tokens = dest_suffix_toks[:, 0]
-    
-    printd(model.tokenizer.convert_ids_to_tokens(src_tokens[:50]))
-    printd(model.tokenizer.convert_ids_to_tokens(dest_tokens[:50]))
-    printd(model.tokenizer.convert_ids_to_tokens(rev_src_tokens[:50]))
+        dest_tokens = dest_suffix_toks[:, 0] # ???
+        
+        print(model.tokenizer.convert_ids_to_tokens(src_tokens[:50]))
+        print(model.tokenizer.convert_ids_to_tokens(dest_tokens[:50]))
+        print(model.tokenizer.convert_ids_to_tokens(rev_src_tokens[:50]))
 
-    to_dest_probs = to_dest_probs[good_idx2]
-    to_dest_tokens = to_dest_tokens[good_idx2]
-    src_tokens = src_tokens[good_idx2]
+        
+        print(f"{src_lang} = {dest_lang} Correct translations: {len(rev_src_probs)} / {len(src_words)}")
+        
+        data = {
+            src_lang: model.tokenizer.convert_ids_to_tokens(src_tokens[cidx]),
+            dest_lang: model.tokenizer.convert_ids_to_tokens(dest_tokens[cidx]),
+            src_lang + "_tok" : src_tokens[cidx].cpu(),
+            dest_lang + "_tok" : dest_tokens[cidx].cpu(),
+            f'{src_lang}_to_{dest_lang}_prob': to_dest_probs[cidx].cpu(),
+            f'{dest_lang}_to_{src_lang}_prob': rev_src_probs[cidx].cpu()
+        }
 
-    cidx = (src_tokens == rev_src_tokens) & (rev_src_probs > threshold)
-    
-    print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(src_words)}")
-    
-    data = {
-        src_lang: model.tokenizer.convert_ids_to_tokens(src_tokens[cidx]),
-        dest_lang: model.tokenizer.convert_ids_to_tokens(dest_tokens[cidx]),
-        src_lang + "_tok" : src_tokens[cidx].cpu(),
-        dest_lang + "_tok" : dest_tokens[cidx].cpu(),
-        f'{src_lang}_to_{dest_lang}_prob': to_dest_probs[cidx].cpu(),
-        f'{dest_lang}_to_{src_lang}_prob': rev_src_probs[cidx].cpu()
-    }
-
-    df = pd.DataFrame(data)
-    df = remove_dup_translation(df)
-    return df
+        df = pd.DataFrame(data)
+        df = remove_dups(df)
+        return df
 
 
 # def merge_datasets(df_src, df_dest, df_latent, vocab, **kwargs):
