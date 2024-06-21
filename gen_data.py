@@ -245,18 +245,17 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
     other_col = [col for col in all_df.columns if col not in lang_col + tok_col]
     new_order = sorted(lang_col) + sorted(tok_col) + other_col 
     all_df = all_df[new_order]
-    return remove_dups(all_df)
+    all_df = remove_dups(all_df)
+    all_df = all_df.drop(columns="index")
+    return all_df
     
 def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
     device = next(model.parameters()).device
 
     def run(src_words, src_lang, dest_lang):    
-        prompt = generate_translation_prompt(None, src_lang=src_lang, dest_lang=dest_lang)
-        kv_cache = prefix.gen_kv_cache(prompt, model)
-        suffixes = generate_common_suffixes(df[src_lang], src_lang, dest_lang) #suffixes will have leading space for gemma
-        suffix_toks, keep_idx = prefix.tokenize_suffixes(suffixes, model)
+              
+        kv_cache, suffix_toks, keep_idx = prefix.suffix_preamble(df, model, src_lang, dest_lang)
         all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
-        
         mask_all_probs = -torch.ones_like(all_probs)
         mask_all_probs[keep_idx] = all_probs
         
@@ -292,6 +291,7 @@ def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.
     new_df = df[cidx.cpu().numpy()].copy()
     new_df.loc[:, f'{src_lang}_to_{dest_lang}_prob'] = to_dest_probs[cidx].cpu().numpy()
     new_df.loc[:, f'{dest_lang}_to_{src_lang}_prob'] = rev_src_probs[cidx].cpu().numpy()
+    #new_df.reset_index(drop=True, inplace=True)
     return new_df
 
 #keep_correct(raw_dataset, model, **cfg_dict)

@@ -175,12 +175,8 @@ def translate(src_words,
     all_toks = []
     
     prefix = gen_data.generate_translation_prompt(None, src_lang, dest_lang, translations = translation_bank)
-    prefix_tok = model.tokenizer.encode(prefix, return_tensors="pt").to(device)
-    
-    kv_cache = prefix.gen_kv_cache(prefix_tok, model)
-    
-    suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang) #suffixes will have leading space for gemma
-    suffix_toks = prefix.tokenize_suffixes(suffixes, model.tokenizer)
+    kv_cache, suffix_toks, _ = prefix.suffix_preamble(src_words, src_lang, dest_lang, model)
+
     suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
     
     runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)

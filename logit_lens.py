@@ -19,6 +19,7 @@ import pandas as pd
 from matplotlib.colors import LogNorm
 import numpy as np
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
+import prefix
 # %%
 @torch.no_grad
 def run_with_shared_prefix(prefix_toks : Int[Tensor, "seq"], 
@@ -48,53 +49,45 @@ def run_with_shared_prefix(prefix_toks : Int[Tensor, "seq"],
     
 
 @torch.no_grad
-def get_logits_batched(prefix_toks : Int[Tensor, "seq"], 
+def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache, 
                        suffix_toks : Int[Tensor, "batch seq2"],
-                       model, 
-                       intervention=None, 
+                       model,
+                       tuned_lens = None, 
+                       intervention=None,
                        **kwargs):
-    """
-    Compute the logits for a given dataset using a language model.
-
-    Args:
-        dataset (list): The dataset to compute logits for.
-        intervention (object, optional): An intervention object for forward hooks. Defaults to None.
-        tuned_lens (object, optional): An object for tuning the latents. Defaults to None.
-        model (object, optional): The language model. Defaults to model.
-        tokenizer (object, optional): The tokenizer. Defaults to tokenizer.
-
-    Returns:
-        torch.Tensor: The computed logits for the dataset.
-    """
     
+    batch_size = kwargs.get('batch_size', 1)
     device = next(model.parameters()).device
-    tokenizer = model.tokenizer
-    use_tuned_lens = kwargs.get('use_tuned_lens', False)
-    return_float = kwargs.get('return_float', False)
-    cache_prefix = kwargs.get('cache_prefix', False)
-    assert cache_prefix, "get_logits_batched required setting cache prefix."
     
-    use_reverse_lens = kwargs.get('use_reverse_lens', False)
-    assert not use_reverse_lens, "Reverse lens not supported for batched logits."
+    use_tuned_lens = kwargs.get('use_tuned_lens', False)
+    #return_float = kwargs.get('return_float', False)
     
     fwd_hooks = [] if intervention is None else intervention.fwd_hooks(model, **kwargs)
+    all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
             
-    _, cache = run_with_shared_prefix(prefix_toks, suffix_toks, model, fwd_hooks=fwd_hooks)
+    suffix_toks_batched = torch.split(suffix_toks, batch_size, dim=0)
     
-    latents = [act[:, -1, :] for act in cache.values()]
-    latents = torch.stack(latents, dim=1) #(batch, num_layers, d_model)
+    # latents = [act[:, -1, :] for act in cache.values()]
+    # latents = torch.stack(latents, dim=1) #(batch, num_layers, d_model)
 
+    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc="Computing logits", position=0, leave=True)
     
-    if use_tuned_lens:
-        logits = torch.stack([model.tuned_lens(latents[:, i], i) for i in range(model.cfg.n_layers)], dim=1)
-    else:
-        logits = model.unembed(latents)
+    all_logits = []
     
-    if return_float:
-        logits = logits.float()
-        latents = latents.float()
+    for i, toks in enumerate(runner):
+        cache = prefix.run_with_kv_cache(toks, kv_cache, model, fwd_hooks = fwd_hooks, names_filter = all_post_resid).cache    
+        
+        latents = [act[:, -1, :] for act in cache.values()] # List of (batch, d_model)
+        latents = torch.stack(latents, dim=1) # (batch, num_layers, d_model)
+        
+        if use_tuned_lens:
+            approx_logits = tuned_lens(latents)
+        else:
+            approx_logits = model.unembed(latents)
+        all_logits.append(approx_logits)
+    all_logits = torch.stack(all_logits, dim=0)
+    return all_logits
     
-    return latents, logits
 # %%
 @torch.no_grad
 def get_logits(dataset, model, intervention=None, **kwargs):
@@ -117,12 +110,6 @@ def get_logits(dataset, model, intervention=None, **kwargs):
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
     return_float = kwargs.get('return_float', False)
     cache_prefix = kwargs.get('cache_prefix', False)
-    
-    use_reverse_lens = kwargs.get('use_reverse_lens', False)
-    if use_reverse_lens:
-        rev_lens_scale = kwargs.get('rev_lens_scale', -1)
-        assert rev_lens_scale != -1, "Please provide a valid scale for the reverse lens."
-        print(f"Using reverse lens with scale: {rev_lens_scale}")
     
     print(f"Kwargs: {kwargs}") 
     def get_latents(tokens, datapoint):

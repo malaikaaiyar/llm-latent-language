@@ -12,7 +12,7 @@ MAIN = __name__ == "__main__"
 
 class BatchTunedLens(nn.Module):
     """
-    A module that applies a batch of tuned lenses to the input tensor.
+    A module that allows for applying tuned lens to entire stack of activations over every layer
 
     Args:
         tuned_lens (TunedLens): The tuned lens object containing the layer translators.

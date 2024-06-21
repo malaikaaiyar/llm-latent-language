@@ -57,6 +57,8 @@ def process_suffix_toks(suffix_toks, model):
     printd(suffix_toks)
     return suffix_toks
 
+TokenizeSuffixesResult = namedtuple('TokenizeSuffixes', ['tokens', 'indices'])
+
 def tokenize_suffixes(suffixes : List[str], model):
     device = next(model.parameters()).device
     raw_suffix_toks, attention_mask = model.tokenizer(suffixes, 
@@ -82,7 +84,7 @@ def tokenize_suffixes(suffixes : List[str], model):
     
     suffix_toks = suffix_toks.to(device)
     suffix_toks = process_suffix_toks(suffix_toks, model)
-    return suffix_toks, good_idx
+    return TokenizeSuffixesResult(suffix_toks, good_idx)
     
 def gen_kv_cache(prompt : str | Int[Tensor, "batch seq"] | Int[Tensor, "seq"],
                  model : HookedTransformer
@@ -123,19 +125,24 @@ def run_with_kv_cache(tokens : Int[Tensor, "batch seq"],
             logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
             return RunWithKVCacheResult(logits=logits, cache=cache)    
     
+def run_suffix(df, model, src_lang = None, dest_lang = None, fwd_hooks = [], hooks_filter = [], batch_size = 1, **kwargs):
+    kv_cache, suffix_toks, _ = suffix_preamble(df, model, src_lang, dest_lang)
+    probs, tokens = batched_predict_next(kv_cache, suffix_toks, model, fwd_hooks=fwd_hooks, hooks_filter=hooks_filter, batch_size = batch_size, **kwargs)
+    
 def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
                            suffixes_toks : Int[Tensor, "batch seq"],
                            model,
                            fwd_hooks = [],
                            hooks_filter = [], 
                            batch_size = 1,
+                           return_logits = False,
                            **kwargs):
     
     desc = kwargs.get("desc", "")
     position = kwargs.get("position", 0)
     leave = kwargs.get("leave", True)
     # assume all suffixes tokenize to the same number of tokens
-    all_probs = []
+    all_outs = []
     all_toks = []
 
     suffix_toks_batched = torch.split(suffixes_toks, batch_size, dim=0)
@@ -144,16 +151,30 @@ def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
     
     for batch in runner:
         logits = run_with_kv_cache(batch, kv_cache, model, fwd_hooks, hooks_filter).logits[:, -1].detach()
-        probs = torch.softmax(logits, dim=-1)
-        max_probs, max_tokens = torch.max(probs, dim=-1)
+        if return_logits:
+            outs = logits
+        else:
+            outs = torch.softmax(logits, dim=-1)
+        max_outs, max_tokens = torch.max(outs, dim=-1)
         
-        all_probs.append(max_probs)
+        all_outs.append(max_outs)
         all_toks.append(max_tokens)
         runner.update(len(batch))
         
-    all_probs = torch.cat(all_probs, dim=0)
+    all_outs = torch.cat(all_outs, dim=0)
     all_toks = torch.cat(all_toks, dim=0)
-    return all_probs, all_toks
+    return all_outs, all_toks
+
+SuffixPreambleReturn = namedtuple('SuffixPreambleReturn', ['kv_cache', 'tokens', "indices"])
+
+def suffix_preamble(df, model, src_lang = None, dest_lang = None, **kwargs):
+    
+    prompt = gen_data.generate_translation_prompt(None, src_lang, dest_lang)
+    kv_cache = prefix.gen_kv_cache(prompt, model)
+    suffixes = gen_data.generate_common_suffixes(df[src_lang], src_lang, dest_lang)
+    suffix_toks, keep_idx = prefix.tokenize_suffixes(suffixes, model)
+    
+    return SuffixPreambleReturn(kv_cache, suffix_toks, keep_idx)
 
 @torch.no_grad()
 def measure_performance(df, model, **kwargs): 
@@ -167,10 +188,7 @@ def measure_performance(df, model, **kwargs):
     total_loss = 0
     tokenizer = model.tokenizer
     
-    prompt = gen_data.generate_translation_prompt(None, src_lang, dest_lang)
-    kv_cache = prefix.gen_kv_cache(prompt, model)
-    suffixes = gen_data.generate_common_suffixes(df[src_lang], **kwargs)
-    suffix_toks, _ = prefix.tokenize_suffixes(suffixes, model)
+    kv_cache, suffix_toks, _ = suffix_preamble(df, model, src_lang, dest_lang)
     
     target_toks = torch.LongTensor(df[f'{dest_lang}_tok']).to(device)
     tensor_dataset = TensorDataset(suffix_toks, target_toks)

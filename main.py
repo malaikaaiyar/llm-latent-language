@@ -40,7 +40,6 @@ from tuned_lens_wrap import load_tuned_lens
 #from reverse_tuned_lens import ReverseLens
 import dq_utils
 from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
-import intervention
 from intervention import Intervention
 from config_argparse import try_parse_args
 # %%
@@ -210,24 +209,24 @@ def main(dataset, cfg):
     #interv_steer_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
     #interv_steer_coeff_list = [1.0]
 
+    # can share kv_cache
+    # activation only acts on last seq position
+
+    prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
+    kv_cache = prefix.gen_kv_cache(prompt, model)
+    
     total_iterations = dq_utils.calculate_iterations(start_lower, start_upper, end_lower, end_upper)
     outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
 
-    import intervention
     from logit_lens import get_logits, plot_logit_lens_latents
 
-    # if cfg.metric_goal == 'max':
-    #     best_stats = {cfg.metric: -np.inf}
-    # else:
-    #     best_stats = {cfg.metric: np.inf}
-        
     for start_layer in range(start_lower,start_upper):
         for end_layer in range(end_lower, end_upper):
             if start_layer >= end_layer:
                 continue
             
             interv = Intervention(cfg.intervention_func, range(start_layer, end_layer))
-            latent_diff, logits_diff = get_logits(dataset, model, intervention=interv,  **cfg_dict)
+            
             latent_diff = latent_diff.float()
             logits_diff = logits_diff.float()
             stats = plot_logit_lens_latents(logits_diff, dataset, **cfg_dict, title="diff", cfg=cfg)
@@ -254,14 +253,19 @@ def main(dataset, cfg):
 %load_ext autoreload
 %autoreload 2
 # %%
+import importlib
+importlib.reload(gen_data)
 
 cfg.dest_lang = 'de'
 cfg_dict = asdict(cfg)
 prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
 raw_dataset = gen_data.load_dataset(cfg.dataset_path, cfg.src_lang, cfg.dest_lang, cfg.latent_lang)
-raw_dataset = gen_data.remove_dups(raw_dataset)
+raw_dataset
+# %%
 correct_dataset = gen_data.keep_correct(raw_dataset, model, **cfg_dict) 
 prefix.measure_performance(correct_dataset, model, **cfg_dict)
+
+# %%
 
 # %%
 if False:
