@@ -52,7 +52,6 @@ class Config:
 cfg = Config()
 cfg = try_parse_args(cfg)
 cfg.model_name = 'meta-llama/Llama-2-7b-hf'
-cfg.batch_size = 32
  # %%
 
 

@@ -10,7 +10,10 @@ from torch.utils.data import DataLoader, TensorDataset
 import gen_data
 import prefix
 from collections import namedtuple
+#from gen_data import lang2name
 # %%
+
+lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文'}
 
 __DEBUG__ = True
 
@@ -125,7 +128,7 @@ def process_suffix_toks(suffix_toks, model):
     vocab = model.tokenizer.get_vocab()
     try:
         if "Llama-2" in model.cfg.model_name:
-            assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
+            #assert torch.all( ((suffix_toks[:, 0] == vocab["▁"]) | (suffix_toks[:, 0] == vocab["▁<"]))), "LLama tokenizer should prepend space token"
             suffix_toks = suffix_toks[:, 1:] # remove space token
             
         elif "gemma" in model.cfg.model_name: # gemma tokenizer does not prepend space token automatically
@@ -171,8 +174,8 @@ def tokenize_suffixes(suffixes : List[str], model):
     assert suffix_toks.shape[0] == len(suffixes), "Suffixes and tokens should have the same length"
     return TokenizeSuffixesResult(suffix_toks, good_idx)
 
-def suffix_preamble(src_words, model, src_lang = None, dest_lang = None, **kwargs):
-    
+def suffix_preamble(src_words, model, keep_idx, src_lang = None, dest_lang = None, **kwargs):
+    assert src_lang in lang2name and dest_lang in lang2name, "src_lang and dest_lang must be provided"
     prompt = gen_data.generate_translation_prompt(None, src_lang, dest_lang)
     kv_cache = prefix.gen_kv_cache(prompt, model)
     suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang)

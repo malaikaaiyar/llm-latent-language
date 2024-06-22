@@ -16,7 +16,7 @@ from collections import namedtuple
 # os.chdir("/root/llm-latent-language")
 # print(f"Current Working Directory: {os.getcwd()}")
 #lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
-lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
+lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文'}
 
 all_translation_banks = {'gemma' :
                             {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
@@ -207,9 +207,10 @@ TranslateCycleReturn = namedtuple('TranslateCycleReturn',
 def translate_cycle(src_words, model, src_lang, dest_lang, **kwargs):
     device = next(model.parameters()).device
     trans_thresh = kwargs.get('trans_thresh', 0)
-    
+    keep_idx = torch.ones(len(src_words), dtype=torch.bool, device=device)
     to_dest_probs, dest_toks, src_toks, idx_to = prefix.run(src_words, model, src_lang, dest_lang, **kwargs)
     to_dest_strs = model.tokenizer.convert_ids_to_tokens(dest_toks)
+    print('====')
     rev_src_probs, rev_src_tokens, df_dest_toks, idx_from = prefix.run(to_dest_strs, model, dest_lang, src_lang, **kwargs)
     
     # dataset has set of (src, dest, latent) triples
@@ -226,12 +227,11 @@ def translate_cycle(src_words, model, src_lang, dest_lang, **kwargs):
     #new_df.reset_index(drop=True, inplace=True)
     return TranslateCycleReturn(cidx, src_toks, dest_toks, to_dest_probs, rev_src_probs)
     
-def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
+def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, **kwargs):
     device = next(model.parameters()).device
 
     cidx, _, dest_tok, dest_prob, rev_prob = translate_cycle(df[src_lang], model, src_lang, 
-                                                          dest_lang, trans_thresh=trans_thresh,
-                                                            batch_size=batch_size, **kwargs)
+                                                          dest_lang, trans_thresh=trans_thresh, **kwargs)
     true_dest_tok = torch.LongTensor(df[f'{dest_lang}_tok'])
     cidx = cidx & (dest_tok == true_dest_tok) 
     print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(cidx)}")
