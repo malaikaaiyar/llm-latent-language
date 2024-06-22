@@ -20,6 +20,8 @@ from matplotlib.colors import LogNorm
 import numpy as np
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 import prefix
+from eindex import eindex
+from torch.utils.data import TensorDataset, DataLoader
 # %%
 @torch.no_grad
 def run_with_shared_prefix(prefix_toks : Int[Tensor, "seq"], 
@@ -52,41 +54,58 @@ def run_with_shared_prefix(prefix_toks : Int[Tensor, "seq"],
 def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache, 
                        suffix_toks : Int[Tensor, "batch seq2"],
                        model,
+                       lang_idx : Int[Tensor, "lang batch"],
                        tuned_lens = None, 
                        intervention=None,
                        **kwargs):
     
     batch_size = kwargs.get('batch_size', 1)
-    device = next(model.parameters()).device
-    
+    src_lang = kwargs.get('src_lang', 'fr')
+    latent_lang = kwargs.get('latent_lang', 'en')
+    dest_lang = kwargs.get('dest_lang', 'zh')
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
+    use_tuned_lens = kwargs.get('use_tuned_lens', False)
+    
+    device = next(model.parameters()).device
+    lang_idx = lang_idx.to(device)
+    suffix_toks = suffix_toks.to(device)
+    
     #return_float = kwargs.get('return_float', False)
     
     fwd_hooks = [] if intervention is None else intervention.fwd_hooks(model, **kwargs)
     all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
+    
+    dataset = TensorDataset(suffix_toks, lang_idx)
+    dataloader = DataLoader(dataset, batch_size=batch_size)
             
-    suffix_toks_batched = torch.split(suffix_toks, batch_size, dim=0)
+    
+    # suffix_toks_batched = torch.split(suffix_toks, batch_size, dim=0)
     
     # latents = [act[:, -1, :] for act in cache.values()]
     # latents = torch.stack(latents, dim=1) #(batch, num_layers, d_model)
 
-    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc="Computing logits", position=0, leave=True)
+    runner = tqdm(dataloader, total=len(suffix_toks), desc="Computing logits", position=0, leave=True)
     
-    all_logits = []
+    all_probs = []
     
-    for i, toks in enumerate(runner):
+    for i, (toks, idx) in enumerate(runner):
         cache = prefix.run_with_kv_cache(toks, kv_cache, model, fwd_hooks = fwd_hooks, names_filter = all_post_resid).cache    
         
         latents = [act[:, -1, :] for act in cache.values()] # List of (batch, d_model)
         latents = torch.stack(latents, dim=1) # (batch, num_layers, d_model)
         
         if use_tuned_lens:
-            approx_logits = tuned_lens(latents)
+            approx_logits = model.tuned_lens(latents)
         else:
             approx_logits = model.unembed(latents)
-        all_logits.append(approx_logits)
-    all_logits = torch.stack(all_logits, dim=0)
-    return all_logits
+            
+        probs = torch.softmax(approx_logits, dim=-1)
+        
+        probs = eindex(probs, idx, "bs n_layer [bs lang] -> lang n_layer bs")
+        all_probs.append(probs)
+        runner.update(len(toks))
+    all_probs = torch.cat(all_probs, dim=-1)
+    return all_probs
     
 # %%
 @torch.no_grad

@@ -1,5 +1,4 @@
 sentencepiece
-git+https://github.com/callummcdougall/eindex.git
 eindex
 torch
 tuned_lens
@@ -8,11 +7,11 @@ torch
 torchvision
 torchaudio
 pandas
-dataclasses 
 numpy 
 matplotlib
 seaborn
 tqdm 
+jaxtyping
 scipy 
 transformers
 transformer_lens
@@ -25,3 +24,5 @@ safetensors
 papermill
 ipykernel
 huggingface
+pandas
+matplotlib

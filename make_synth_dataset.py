@@ -27,10 +27,7 @@ from transformer_lens import HookedTransformer, HookedTransformerKeyValueCache
 # %%
 # ==== Custom Libraries ====
 import gen_data
-from utils import plot_ci_plus_heatmap
-from tuned_lens_wrap import load_tuned_lens
-from dq_utils import proj, entropy, plot_ci, is_chinese_char, broadcast_kv_cache, printd
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from dq_utils import is_chinese_char, printd
 from config_argparse import try_parse_args
 import prefix
 __DEBUG__ = True
@@ -54,6 +51,8 @@ class Config:
 
 cfg = Config()
 cfg = try_parse_args(cfg)
+cfg.model_name = 'meta-llama/Llama-2-7b-hf'
+cfg.batch_size = 32
  # %%
 
 
@@ -66,27 +65,16 @@ vocab = model.tokenizer.get_vocab()
 
     #{'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
 
-all_translation_banks = {'gemma' :
-                            {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
-                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
-                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
-                            'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}},
-                        'llama':
-                            {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
-                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
-                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
-                            'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}}
-                        }
+
 
 # just use the same bank for both
-translation_bank = all_translation_banks['llama']               
+translation_bank = gen_data.all_translation_banks['llama']               
     
 lang2name = {
     'fr': 'Français', 
     'de': 'Deutsch', 
     'en': 'English', 
     'zh': '中文', 
-    'ru': 'Русский'
 }
 
 # all_translation_bank = [
@@ -103,11 +91,11 @@ lang2name = {
     
 
 
-def check_bank_valid(bank):
+def check_bank_valid(bank, valid_langs = lang2name.keys()):
     """
     Check if all tokens in the translation bank are in the vocabulary
-    """    
-    toks = sum([list(x.values()) for x in bank.values()],[])
+    """   
+    toks = sum([list(x[lang] for lang in valid_langs if lang in x) for x in bank.values()], [])
     new_toks = []
     for x in toks:
         if is_chinese_char(x):
@@ -147,9 +135,7 @@ def remove_dup_translation(df):
 def translate(src_words, 
               src_lang, 
               dest_lang, 
-              model = model, 
-              translation_bank = translation_bank, 
-              batch_size = None, 
+              model,
               debug = False, 
               **kwargs):
     vocab = model.tokenizer.get_vocab()
@@ -157,96 +143,30 @@ def translate(src_words,
     global __DEBUG__
     __DEBUG__ = debug
 
-    if batch_size is None:
-        batch_size = len(src_words)
-    bs = batch_size
-    
     threshold = 0
 
-    
-    # def run(src_words : List[str] , 
-    #         src_lang : str, 
-    #         dest_lang : str
-    # ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        
-    # TODO: Consider factoring out this code into a function
-    # ====================================================
-    all_probs = []
-    all_toks = []
-    
-    prefix = gen_data.generate_translation_prompt(None, src_lang, dest_lang, translations = translation_bank)
-    kv_cache, suffix_toks, _ = prefix.suffix_preamble(src_words, src_lang, dest_lang, model)
+    cidx, src_toks, dest_toks, dest_prob, rev_prob = gen_data.translate_cycle(src_words, 
+                                                                              model, src_lang, dest_lang, **kwargs)
 
-    suffix_toks_batched = torch.split(suffix_toks, bs, dim=0)
-    
-    runner = tqdm(suffix_toks_batched, total=len(suffix_toks), desc=f"{src_lang} -> {dest_lang}", position=0, leave=True)
-    
-    for batch in runner:
-        #broadcast_kv_cache(kv_cache, len(batch))
-        #batch = batch.to(device)
-        logits = prefix.run_with_kv_cache(batch, kv_cache, model)[:, -1].detach() # model returns (batch, seq, dvocab)
-        probs = torch.softmax(logits, dim=-1)
-        max_probs, max_tokens = torch.max(probs, dim=-1)
-        
-        all_probs.append(max_probs)
-        all_toks.append(max_tokens)
-        runner.update(len(batch))
-        
-    all_probs = torch.cat(all_probs, dim=0)
-    all_toks = torch.cat(all_toks, dim=0)
-    return all_probs, all_toks, suffix_toks, good_idx
-    # ====================================================
-
-    # if debug:
-    #     for src_word in src_words:
-    #         if is_chinese_char(src_word):
-    #             assert src_word in vocab, f"Input zh string {src_word} not in vocabulary"
-    #         else:
-    #             assert "▁" + src_word in vocab, f"Input non-zh string {src_word} not in vocabulary"
-    
-    to_dest_probs, to_dest_tokens, src_suffix_toks, good_idx = run(src_words, src_lang, dest_lang)
-    
-    idx = (to_dest_probs > threshold) & good_idx.to(device)
-    to_dest_probs = to_dest_probs[idx]
-    to_dest_tokens = to_dest_tokens[idx]
-    src_tokens = src_suffix_toks[idx,0]
-    #print(f"{src_tokens.shape=}, {src_suffix_toks.shape=}")
-    
-    print(f"Kept {len(to_dest_probs)} / {len(idx)} translations")
-    to_dest_words = model.tokenizer.convert_ids_to_tokens(to_dest_tokens)
-    rev_src_probs, rev_src_tokens, dest_suffix_toks, good_idx2 = run(to_dest_words, dest_lang, src_lang)
-
-    dest_tokens = dest_suffix_toks[:, 0]
-    
-    printd(model.tokenizer.convert_ids_to_tokens(src_tokens[:50]))
-    printd(model.tokenizer.convert_ids_to_tokens(dest_tokens[:50]))
-    printd(model.tokenizer.convert_ids_to_tokens(rev_src_tokens[:50]))
-
-    to_dest_probs = to_dest_probs[good_idx2]
-    to_dest_tokens = to_dest_tokens[good_idx2]
-    src_tokens = src_tokens[good_idx2]
-
-    cidx = (src_tokens == rev_src_tokens) & (rev_src_probs > threshold)
-    
     print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(src_words)}")
     
     data = {
-        src_lang: model.tokenizer.convert_ids_to_tokens(src_tokens[cidx]),
-        dest_lang: model.tokenizer.convert_ids_to_tokens(dest_tokens[cidx]),
-        src_lang + "_tok" : src_tokens[cidx].cpu(),
-        dest_lang + "_tok" : dest_tokens[cidx].cpu(),
-        f'{src_lang}_to_{dest_lang}_prob': to_dest_probs[cidx].cpu(),
-        f'{dest_lang}_to_{src_lang}_prob': rev_src_probs[cidx].cpu()
+        src_lang: model.tokenizer.convert_ids_to_tokens(src_toks[cidx]),
+        dest_lang: model.tokenizer.convert_ids_to_tokens(dest_toks[cidx]),
+        src_lang + "_tok" : src_toks[cidx].cpu(),
+        dest_lang + "_tok" : dest_toks[cidx].cpu(),
+        f'{src_lang}_to_{dest_lang}_prob': dest_prob[cidx].cpu(),
+        f'{dest_lang}_to_{src_lang}_prob': rev_prob[cidx].cpu()
     }
 
     df = pd.DataFrame(data)
     df = remove_dup_translation(df)
+    # Throw out rows where the chinese translation isn't actually chinese characters
+    if dest_lang == "zh":
+        df = df[df['zh'].apply(lambda x: all([is_chinese_char(c) for c in x]))]
+
     return df
 
-# df = translate(zh_tokens, "zh", "en", bs=128, debug=False, threshold =0)
-# df
-# %%
-# %%
 def en_tokens():
     en_words = []
     with open("./data/dict/en_dict.txt") as en_dict:
@@ -256,30 +176,19 @@ def en_tokens():
                 en_words.append("▁" + word)
     print(f"Found {len(en_words)} in vocabulary from dictionary")
     return en_words
-# %%
-
-
-# %%
-def verify_zh(df):
-    df = df[df['zh'].apply(lambda x: all([is_chinese_char(c) for c in x]))]
-    return df
-
 
 def auto_translate(**kwargs):
 
     en_words = en_tokens()
     bank = {}
-
     print(f"Translation Bank: {translation_bank}")
 
     for lang in lang2name:
         if lang == 'en':
             continue
-        bank[f"en_to_{lang}"] = translate(en_words, 'en', lang, **kwargs)
-        
-    bank["en_to_zh"] = verify_zh(bank["en_to_zh"]) # remove non-chinese characters
+        bank[f"en_to_{lang}"] = translate(en_words, 'en', lang, model, **kwargs)
 
-    df_all = gen_data.merge_dfs(bank.values())
+    df_all = gen_data.merge_dfs(list(bank.values()))
 
     print(f"Merged size {len(df_all)}")
     print(df_all[:10])
@@ -287,11 +196,11 @@ def auto_translate(**kwargs):
     df_all = gen_data.remove_dups(df_all)
     bank["all"] = df_all
     return bank
-# %%
+
 # en_words = en_tokens()
 # en_to_zh = translate(en_words, 'en', 'zh', batch_size=1)
 #en_to_zh = translate(en_words[:200], 'en', 'zh', batch_size=64, debug=True)
-# %%
+
 
 def main(save_dir = None, **kwargs):
     assert save_dir is not None, "Please provide a save directory"
@@ -300,8 +209,9 @@ def main(save_dir = None, **kwargs):
     bank = auto_translate(**kwargs)
     
     for key, df in tqdm(bank.items()):
-        df.to_csv(os.path.join(save_dir, f'{key}.csv'), mode = "w", index=False)
-# %%
+        df.to_csv(os.path.join(save_dir, f'{key}.csv'), mode = "w", index=False) 
+    return bank
+
 cfg_dict = asdict(cfg)
-main(**cfg_dict)
+bank = main(**cfg_dict)
 # %%

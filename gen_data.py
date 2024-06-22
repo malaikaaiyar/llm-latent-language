@@ -8,6 +8,7 @@ from transformers import AutoTokenizer
 from tqdm.auto import tqdm
 from typing import List, Dict, Any
 import prefix
+from collections import namedtuple
 # %%
 
 # Get the current working directory
@@ -17,22 +18,20 @@ import prefix
 #lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
 lang2name = {'fr': 'Français', 'de': 'Deutsch', 'en': 'English', 'zh': '中文', 'ru': 'Русский'}
 
-all_translation_bank = [
-    {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
-    'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'муж'},
-    'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'три'},
-    'new': {'zh': '新', 'en': 'village', 'fr': 'nouveau', 'de': 'neu', 'ru': 'пя'}},
-    
-    {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
-    'middle': {'zh': '中', 'en': 'middle', 'fr': 'milieu', 'de': 'Mitte', 'ru': 'середина'},
-    'three': {'zh': '三', 'en': 'three', 'fr': 'trois', 'de': 'drei', 'ru': 'три'},
-    'woman': {'zh': '女', 'en': 'woman', 'fr': 'femme', 'de': 'Frau', 'ru': 'женщина'}}
-]
+all_translation_banks = {'gemma' :
+                            {'water': {'zh': '水', 'en': 'water', 'fr': 'eau', 'de': 'Wasser', 'ru': 'вода'},
+                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'мужчина'},
+                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'пять'},
+                            'new': {'zh': '新', 'en': 'new', 'fr': 'nouveau', 'de': 'neu', 'ru': 'новый'}},
+                        'llama':
+                            {'day': {'zh': '日', 'en': 'day', 'fr': 'jour', 'de': 'Tag', 'ru': 'день'},
+                            'man': {'zh': '男', 'en': 'man', 'fr': 'homme', 'de': 'Mann', 'ru': 'мужчина'},
+                            'five': {'zh': '五', 'en': 'five', 'fr': 'cinq', 'de': 'fünf', 'ru': 'пять'},
+                            'new': {'zh': '新', 'en': 'new', 'fr': 'nouveau', 'de': 'neu', 'ru': 'новый'}}
+                        }
 
-translation_bank = all_translation_bank[0]
+translation_bank = all_translation_banks['llama']
 
-def translation_bank_extract(lang, prompt_bank = 0):
-    return set([v[lang] for k, v in translation_bank[prompt_bank].items()])
 
 def generate_common_suffixes(src_words, src_lang = None, dest_lang = None, **kwargs):
     assert src_lang is not None, "Source language must be provided"
@@ -72,13 +71,13 @@ def generate_translation_prompt(word, src_lang=None, dest_lang=None, translation
     
     return prompt
 
-def remove_prompt_overlap(df, prompt_bank = 0, src_lang = None, **kwargs):
-    src_words = translation_bank_extract(src_lang, prompt_bank=prompt_bank)
-    if src_lang != 'zh':
-        src_words = [f'▁{word}' for word in src_words]
-    df = df[~df[src_lang].isin(src_words)]
-    df = df.reset_index(drop=True)
-    return df 
+# def remove_prompt_overlap(df, prompt_bank = 0, src_lang = None, **kwargs):
+#     src_words = translation_bank_extract(src_lang, prompt_bank=prompt_bank)
+#     if src_lang != 'zh':
+#         src_words = [f'▁{word}' for word in src_words]
+#     df = df[~df[src_lang].isin(src_words)]
+#     df = df.reset_index(drop=True)
+#     return df 
 
 
 
@@ -92,53 +91,6 @@ def get_derangement(n):
         derangement = torch.randperm(n)
         if is_derangement(derangement):
             return derangement
-
-
-def gen_batched_dataset(df, tokenizer, **kwargs):
-    
-    src_lang = kwargs.get('src_lang', None)
-    dest_lang = kwargs.get('dest_lang', None)
-    latent_lang = kwargs.get('latent_lang', None)
-    
-    
-    prompt = generate_translation_prompt(None, **kwargs)
-    prompt_tok = tokenizer.encode(prompt, return_tensors='pt')
-    df = remove_prompt_overlap(df, **kwargs)
-    common_suffixes = generate_common_suffixes(df, **kwargs)
-    
-    # idx = get_derangement(len(df))
-    src_tok = torch.LongTensor(tokenizer.convert_tokens_to_ids(df[src_lang]))
-    #alt_src = src_tokens[idx]
-    latent_tok = torch.LongTensor(tokenizer.convert_tokens_to_ids(df[latent_lang]))
-    #alt_latent = latent_tokens[idx]
-    dest_tok =  torch.LongTensor(tokenizer.convert_tokens_to_ids(df[dest_lang]))
-    #alt_dest = dest_tokens[idx]
-    
-    input_ids, attention_mask = tokenizer(common_suffixes, return_tensors='pt', padding=False, truncation=False, add_special_tokens=False).values()
-    debug = kwargs.get('debug', False)
-    if debug:
-        assert (attention_mask == 1).all(), "Attention mask should be all ones, common suffixes should be all same length"
-        assert (input_ids[:, 0] == tokenizer.convert_tokens_to_ids('▁')).all(), "First token should be space token" # id of '▁' is 29871
-        token_len_lookup = {'en' : 6, 'fr' : 7, 'de' : 6, 'zh' : 8, 'ru' : 7}
-        assert len(input_ids[0]) == token_len_lookup[kwargs['dest_lang']], "Prompt should have correct length for given language"
-    suffix_tokens = input_ids[:, 1:] # remove the leading space token
-    out = {
-        'prompt': prompt,
-        'prompt_tok': prompt_tok,
-        'suffixes' : suffix_tokens,
-        'src' : src_tok,
-        'latent' : latent_tok,
-        'dest' : dest_tok,
-        'common_suffixes': common_suffixes,
-        }
-    return out
-    
-# %%
-# from transformers import AutoTokenizer
-# cfg = {'src_lang' : 'fr', 'latent_lang' : 'en' , 'dest_lang' : 'zh'}
-# df = construct_dataset(**cfg)
-# prompt, common_suffixes = gen_batched_dataset(df, **cfg)
-# tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
 
 # %%
 
@@ -249,48 +201,44 @@ def load_dataset(dataset_path, src_lang, dest_lang, latent_lang):
     all_df = all_df.drop(columns="index")
     return all_df
     
-def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
+TranslateCycleReturn = namedtuple('TranslateCycleReturn', 
+                                  ['indices', 'src_tokens', 'dest_tokens', 'dest_probs', 'rev_probs'])
+    
+def translate_cycle(src_words, model, src_lang, dest_lang, **kwargs):
     device = next(model.parameters()).device
-
-    def run(src_words, src_lang, dest_lang):    
-              
-        kv_cache, suffix_toks, keep_idx = prefix.suffix_preamble(df, model, src_lang, dest_lang)
-        all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
-        mask_all_probs = -torch.ones_like(all_probs)
-        mask_all_probs[keep_idx] = all_probs
-        
-        unk_id = model.tokenizer.convert_tokens_to_ids('<unk>')
-        
-        mask_all_toks = torch.zeros_like(all_toks) + unk_id
-        mask_all_toks[keep_idx] = all_toks
-        
-        mask_suffix_toks = torch.zeros_like(suffix_toks[:, 0]) + unk_id
-        mask_suffix_toks[keep_idx] = suffix_toks[:, 0]
-        
-        # Keep outputs the same size, but mask out the ones that are not in the vocab
-        # keep_idx = boolean_mask of which ones are in the vocab
-        return mask_all_probs, mask_all_toks, mask_suffix_toks, keep_idx
-        
-        # target = torch.LongTensor(df[f'{dest_lang}_tok'])[keep_idx]
-        
-        # idx = (all_probs > trans_thresh) & (all_toks == target.to(device))
-
-    to_dest_probs, to_dest_tokens, df_src_toks, idx_to = run(df[src_lang], src_lang, dest_lang)
-    to_dest_strs = model.tokenizer.convert_ids_to_tokens(to_dest_tokens)
-    rev_src_probs, rev_src_tokens, df_dest_toks, idx_from = run(to_dest_strs, dest_lang, src_lang)
+    trans_thresh = kwargs.get('trans_thresh', 0)
+    
+    to_dest_probs, dest_toks, src_toks, idx_to = prefix.run(src_words, model, src_lang, dest_lang, **kwargs)
+    to_dest_strs = model.tokenizer.convert_ids_to_tokens(dest_toks)
+    rev_src_probs, rev_src_tokens, df_dest_toks, idx_from = prefix.run(to_dest_strs, model, dest_lang, src_lang, **kwargs)
     
     # dataset has set of (src, dest, latent) triples
     dest_thresh_idx = (to_dest_probs > trans_thresh) # src -> dest translation probability is above threshold
     rev_thresh_idx = (rev_src_probs > trans_thresh) # dest -> src translation probability is above threshold
-    rev_match_df = (df_src_toks == rev_src_tokens) # src -> dest' -> src' translation, src == src'
-    dest_match_df = (df_dest_toks == to_dest_tokens) # src -> dest' -> src' translation, dest == dest'
+    rev_match_df = (src_toks == rev_src_tokens) # src -> dest' -> src' translation, src == src'
+    #dest_match_df = (df_dest_toks == dest_toks) # src -> dest' -> src' translation, dest == dest'
+    cidx = dest_thresh_idx & rev_thresh_idx & rev_match_df & idx_to & idx_from #& dest_match_df
+    print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(cidx)}")
+
+    # new_df = df[cidx.cpu().numpy()].copy()
+    # new_df.loc[:, f'{src_lang}_to_{dest_lang}_prob'] = to_dest_probs[cidx].cpu().numpy()
+    # new_df.loc[:, f'{dest_lang}_to_{src_lang}_prob'] = rev_src_probs[cidx].cpu().numpy()
+    #new_df.reset_index(drop=True, inplace=True)
+    return TranslateCycleReturn(cidx, src_toks, dest_toks, to_dest_probs, rev_src_probs)
     
-    cidx = dest_thresh_idx & rev_thresh_idx & rev_match_df & dest_match_df
+def keep_correct(df, model, src_lang = None, dest_lang = None, trans_thresh = 0.5, batch_size = 32, **kwargs):
+    device = next(model.parameters()).device
+
+    cidx, _, dest_tok, dest_prob, rev_prob = translate_cycle(df[src_lang], model, src_lang, 
+                                                          dest_lang, trans_thresh=trans_thresh,
+                                                            batch_size=batch_size, **kwargs)
+    true_dest_tok = torch.LongTensor(df[f'{dest_lang}_tok'])
+    cidx = cidx & (dest_tok == true_dest_tok) 
     print(f"{src_lang} = {dest_lang} Correct translations: {cidx.sum()} / {len(cidx)}")
 
     new_df = df[cidx.cpu().numpy()].copy()
-    new_df.loc[:, f'{src_lang}_to_{dest_lang}_prob'] = to_dest_probs[cidx].cpu().numpy()
-    new_df.loc[:, f'{dest_lang}_to_{src_lang}_prob'] = rev_src_probs[cidx].cpu().numpy()
+    new_df.loc[:, f'{src_lang}_to_{dest_lang}_prob'] = dest_prob[cidx].cpu().numpy()
+    new_df.loc[:, f'{dest_lang}_to_{src_lang}_prob'] = rev_prob[cidx].cpu().numpy()
     #new_df.reset_index(drop=True, inplace=True)
     return new_df
 

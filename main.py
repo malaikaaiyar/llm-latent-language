@@ -63,7 +63,7 @@ class Config:
         metadata={"help": "Intermediate (laten) language used in the model."}
 )
     model_name: str = field(
-        default='gemma-2b',
+        default='meta-llama/Llama-2-7b-hf',
         metadata={"help": "Name or path of the model [gemma-2b | Llama-2-7b-hf]."}
 )
     single_token_only: bool = field(
@@ -75,7 +75,7 @@ class Config:
         metadata={"help": "Process only multi tokens if True."}
 )
     dataset_path: str = field(
-        default="./data/synth_gemma_2b",
+        default="./data/synth_llama_2_7b_new",
         metadata={"help": "Path to the dataset used."}
 )
     debug: bool = field(
@@ -140,7 +140,7 @@ class Config:
         metadata={"help": "Basename for log files."}
 )
     batch_size: int = field(
-        default=32,
+        default=4,
         metadata={"help": "Batch size for processing."}
 )
 #     metric: str = field(
@@ -256,8 +256,6 @@ def main(dataset, cfg):
 import importlib
 importlib.reload(gen_data)
 
-cfg.dest_lang = 'de'
-cfg_dict = asdict(cfg)
 prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
 raw_dataset = gen_data.load_dataset(cfg.dataset_path, cfg.src_lang, cfg.dest_lang, cfg.latent_lang)
 raw_dataset
@@ -266,6 +264,24 @@ correct_dataset = gen_data.keep_correct(raw_dataset, model, **cfg_dict)
 prefix.measure_performance(correct_dataset, model, **cfg_dict)
 
 # %%
+import importlib
+import logit_lens
+importlib.reload(logit_lens)
+importlib.reload(prefix)
+kv_cache, suffix_toks, _ = prefix.suffix_preamble(correct_dataset, model, cfg.src_lang, cfg.dest_lang)
+cols = [f'{x}_tok' for x in [cfg.src_lang, cfg.dest_lang, cfg.latent_lang]]
+idx = torch.tensor(correct_dataset[cols].to_numpy()) # (batch, lang)
+probs_lang = logit_lens.logit_lens_batched(kv_cache, suffix_toks, model, idx, tuned_lens = None, intervention = None, **cfg_dict)
+log_probs_lang = torch.log(probs_lang).cpu()
+# %%
+
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+langs = [cfg.src_lang, cfg.dest_lang, cfg.latent_lang]
+for log_prob, lang in zip(log_probs_lang, langs):
+    dq_utils.plot_ci(log_prob, ax, dim = 1, label=lang)
+ax.set_title("Log Probabilities of Correct Dataset")
+ax.legend()
+plt.show()
 
 # %%
 if False:

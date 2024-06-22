@@ -42,49 +42,6 @@ def broadcast_kv_cache(kv_cache : HookedTransformerKeyValueCache, n : int):
     else:
         kv_cache.previous_attention_mask = kv_cache.previous_attention_mask.expand(n, -1)
 
-
-def process_suffix_toks(suffix_toks, model):
-    vocab = model.tokenizer.get_vocab()
-    if "Llama-2" in model.cfg.model_name:
-        assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
-        suffix_toks = suffix_toks[:, 1:]
-        
-    elif "gemma" in model.cfg.model_name:
-        pass 
-    
-    else:
-        raise ValueError(f"Check {model.cfg.model_name} tokenization first, add case to prefix.py")
-    printd(suffix_toks)
-    return suffix_toks
-
-TokenizeSuffixesResult = namedtuple('TokenizeSuffixes', ['tokens', 'indices'])
-
-def tokenize_suffixes(suffixes : List[str], model):
-    device = next(model.parameters()).device
-    raw_suffix_toks, attention_mask = model.tokenizer(suffixes, 
-                                                    add_special_tokens=False, 
-                                                    return_tensors="pt", 
-                                                    padding = True).values() #remove start of sequence character
-    good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool)
-    if torch.any(attention_mask == 0):
-        print("Warning: tokenize_suffixes - Attention mask has zeros")
-        # assume that most common number of tokens is correct
-        # we only get more tokens if something screwed up and a chinese character was sampled
-        # when it shouldn't have, so take the ids with shortest attention mask
-        counts = attention_mask.sum(dim=1)
-        correct_count = torch.mode(counts, dim=0).values
-        good_idx = counts == correct_count
-        # global bad_idx
-        # bad_idx = torch.where(counts != correct_count)
-        
-        suffix_toks = raw_suffix_toks[good_idx][:, :correct_count]
-        assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Some tokens have zero attention mask"
-    else:
-        suffix_toks = raw_suffix_toks
-    
-    suffix_toks = suffix_toks.to(device)
-    suffix_toks = process_suffix_toks(suffix_toks, model)
-    return TokenizeSuffixesResult(suffix_toks, good_idx)
     
 def gen_kv_cache(prompt : str | Int[Tensor, "batch seq"] | Int[Tensor, "seq"],
                  model : HookedTransformer
@@ -117,17 +74,13 @@ def run_with_kv_cache(tokens : Int[Tensor, "batch seq"],
     broadcast_kv_cache(kv_cache, len(tokens))
     tokens = tokens.to(device)
     
-    with model.hooks(fwd_hooks, names_filter):
-        if names_filter == []:
-            logits = model(tokens, past_kv_cache=kv_cache)
-            return RunWithKVCacheResult(logits=logits, cache=None)
-        else:
+    if names_filter == []:
+        logits = model(tokens, past_kv_cache=kv_cache)
+        return RunWithKVCacheResult(logits=logits, cache=None)
+    else:
+        with model.hooks(fwd_hooks = fwd_hooks):
             logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
             return RunWithKVCacheResult(logits=logits, cache=cache)    
-    
-def run_suffix(df, model, src_lang = None, dest_lang = None, fwd_hooks = [], hooks_filter = [], batch_size = 1, **kwargs):
-    kv_cache, suffix_toks, _ = suffix_preamble(df, model, src_lang, dest_lang)
-    probs, tokens = batched_predict_next(kv_cache, suffix_toks, model, fwd_hooks=fwd_hooks, hooks_filter=hooks_filter, batch_size = batch_size, **kwargs)
     
 def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
                            suffixes_toks : Int[Tensor, "batch seq"],
@@ -166,15 +119,87 @@ def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
     return all_outs, all_toks
 
 SuffixPreambleReturn = namedtuple('SuffixPreambleReturn', ['kv_cache', 'tokens', "indices"])
+from IPython.core.debugger import set_trace
 
-def suffix_preamble(df, model, src_lang = None, dest_lang = None, **kwargs):
+def process_suffix_toks(suffix_toks, model):
+    vocab = model.tokenizer.get_vocab()
+    try:
+        if "Llama-2" in model.cfg.model_name:
+            assert torch.all(suffix_toks[:, 0] == vocab["▁"]), "LLama tokenizer should prepend space token"
+            suffix_toks = suffix_toks[:, 1:] # remove space token
+            
+        elif "gemma" in model.cfg.model_name: # gemma tokenizer does not prepend space token automatically
+            pass  
+        
+        else:
+            raise ValueError(f"Check {model.cfg.model_name} tokenization first, add case to prefix.py")
+        printd(suffix_toks)
+        return suffix_toks
+    except AssertionError as e:
+        print(e)
+        set_trace()  # Start the debugger
+        
+TokenizeSuffixesResult = namedtuple('TokenizeSuffixes', ['tokens', 'indices'])
+
+def tokenize_suffixes(suffixes : List[str], model):
+    device = next(model.parameters()).device
+    raw_suffix_toks, attention_mask = model.tokenizer(suffixes, 
+                                                    add_special_tokens=False, 
+                                                    return_tensors="pt", 
+                                                    padding = True).values() #remove start of sequence character
+    attention_mask = attention_mask.to(device)
+    good_idx = torch.ones(len(raw_suffix_toks), dtype=torch.bool, device=device)
+    if torch.any(attention_mask == 0):
+        print("Warning: tokenize_suffixes - Attention mask has zeros")
+        # assume that most common number of tokens is correct
+        # we only get more tokens if something screwed up and a chinese character was sampled
+        # when it shouldn't have, so take the ids with shortest attention mask
+        counts = attention_mask.sum(dim=1)
+        correct_count = torch.mode(counts, dim=0).values
+        good_idx = (counts == correct_count).to(device)
+        # global bad_idx
+        # bad_idx = torch.where(counts != correct_count)
+        
+        suffix_toks = raw_suffix_toks[:, :correct_count]
+        assert torch.all(attention_mask[good_idx][:, :correct_count] == 1), "Incorrect attention mask trimming"
+        # assert not torch.all(attention_mask[good_idx][:, :correct_count+1] == 1), "Incorrect attention mask trimming"
+    else:
+        suffix_toks = raw_suffix_toks
+    
+    suffix_toks = suffix_toks.to(device)
+    suffix_toks = process_suffix_toks(suffix_toks, model)
+    assert suffix_toks.shape[0] == len(suffixes), "Suffixes and tokens should have the same length"
+    return TokenizeSuffixesResult(suffix_toks, good_idx)
+
+def suffix_preamble(src_words, model, src_lang = None, dest_lang = None, **kwargs):
     
     prompt = gen_data.generate_translation_prompt(None, src_lang, dest_lang)
     kv_cache = prefix.gen_kv_cache(prompt, model)
-    suffixes = gen_data.generate_common_suffixes(df[src_lang], src_lang, dest_lang)
+    suffixes = gen_data.generate_common_suffixes(src_words, src_lang, dest_lang)
     suffix_toks, keep_idx = prefix.tokenize_suffixes(suffixes, model)
     
     return SuffixPreambleReturn(kv_cache, suffix_toks, keep_idx)
+
+
+def run(src_words, model, src_lang, dest_lang, batch_size = None, **kwargs):    
+    assert batch_size is not None, "prefix.run: batch_size must be provided"
+    kv_cache, suffix_toks, keep_idx = prefix.suffix_preamble(src_words, model, src_lang, dest_lang)
+    all_probs, all_toks = prefix.batched_predict_next(kv_cache, suffix_toks, model, 
+                                                      batch_size=batch_size, desc=f"{src_lang} -> {dest_lang}")
+    
+    unk_id = model.tokenizer.convert_tokens_to_ids('<unk>')
+    mask_all_probs = -torch.ones_like(all_probs)
+    mask_all_toks = torch.zeros_like(all_toks) + unk_id
+    mask_suffix_toks = torch.zeros_like(suffix_toks[:, 0]) + unk_id
+    
+    mask_all_probs[keep_idx] = all_probs[keep_idx]
+    mask_all_toks[keep_idx] = all_toks[keep_idx]
+    mask_suffix_toks[keep_idx] = suffix_toks[keep_idx][:, 0]
+    
+    # Keep outputs the same size, but mask out the ones that are not in the vocab
+    # keep_idx = boolean_mask of which ones are in the vocab
+    return mask_all_probs, mask_all_toks, mask_suffix_toks, keep_idx
+
 
 @torch.no_grad()
 def measure_performance(df, model, **kwargs): 
@@ -188,9 +213,9 @@ def measure_performance(df, model, **kwargs):
     total_loss = 0
     tokenizer = model.tokenizer
     
-    kv_cache, suffix_toks, _ = suffix_preamble(df, model, src_lang, dest_lang)
+    kv_cache, suffix_toks, _ = suffix_preamble(df[src_lang], model, src_lang, dest_lang)
     
-    target_toks = torch.LongTensor(df[f'{dest_lang}_tok']).to(device)
+    target_toks = torch.LongTensor(list(df[f'{dest_lang}_tok'])).to(device)
     tensor_dataset = TensorDataset(suffix_toks, target_toks)
     dataloader = DataLoader(tensor_dataset, batch_size=batch_size)
     runner = tqdm(dataloader, total=len(dataloader), desc="Measuring performance", position=0, leave=True)
