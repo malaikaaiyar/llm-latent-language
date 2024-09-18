@@ -25,11 +25,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformer_lens import HookedTransformer
 
 # ==== Custom Libraries ====
-import gen_data
-from utils import plot_ci_plus_heatmap
+import OLD_llama.gen_data as gen_data
+from utils_plot import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
-from dq_utils import proj, entropy, plot_ci
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from utils.misc import proj, entropy, plot_ci
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
 # %%
 # fix random seed
 seed = 42
@@ -95,8 +95,8 @@ if cfg.dataset_filter_correct:
 #latents = torch.stack(latents_all)
 # %%
 
-from intervention import Intervention
-import intervention 
+from src.intervention import Intervention
+import src.intervention as intervention 
 
 intervene_reject = Intervention(intervention.hook_reject_subspace, range(32))
 intervene_move = Intervention(intervention.hook_move_subspace, range(32))
@@ -107,7 +107,7 @@ intervene_proj2 = Intervention(intervention.hook_move_subspace2, range(32))
 # %%
 #latent_probs, out_probs, entropy = measure_lang_probs(dataset)
 # EXPENSIVE!
-from logit_lens import get_logits
+from src.logit_lens import get_logits
 cfg = Config(use_tuned_lens = False)
 latents, logits = get_logits(dataset, model, intervention=None, cfg=cfg)
 #latents_int, logits_int = get_logits(dataset, model, intervention=intervene_reject, cfg=cfg)

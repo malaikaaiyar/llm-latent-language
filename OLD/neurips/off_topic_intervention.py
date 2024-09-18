@@ -33,10 +33,10 @@ from tuned_lens import TunedLens
 import einops
 import torch.nn as nn
 
-import gen_data
-from dq_utils import plot_ci as plot_ci_dq
-from dq_utils import proj, plotter, measure_performance
-from logit_lens import logit_lens, plot_logit_lens_latents
+import OLD_llama.gen_data as gen_data
+from utils.misc import plot_ci as plot_ci_dq
+from utils.misc import proj, plotter, measure_performance
+from src.logit_lens import logit_lens, plot_logit_lens_latents
 from tuned_lens_wrap import load_tuned_lens
 # fix random seed
 seed = 42

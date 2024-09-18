@@ -37,13 +37,13 @@ from transformer_lens import HookedTransformer
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # ==== Custom Libraries ====
-import gen_data
-from utils import plot_ci_plus_heatmap
+import OLD_llama.gen_data as gen_data
+from utils_plot import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
-from dq_utils import proj, entropy, plot_ci, is_chinese_char, measure_performance
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
-import intervention
-from intervention import Intervention
+from utils.misc import proj, entropy, plot_ci, is_chinese_char, measure_performance
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+import src.intervention as intervention
+from src.intervention import Intervention
 # %%
 
 
@@ -208,8 +208,8 @@ interv_steer_coeff_list = [0.9, 1.0, 1.01, 1.02, 1.05, 1.3, 1.5][::-1]
 total_iterations = (start_upper - start_lower) * (end_upper - end_lower) * len(interv_steer_coeff_list)
 outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
 
-import intervention
-from logit_lens import get_logits, plot_logit_lens_latents
+import src.intervention as intervention
+from src.logit_lens import get_logits, plot_logit_lens_latents
 
 best_prob = 0
 for interv_steer_coeff in interv_steer_coeff_list:

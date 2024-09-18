@@ -29,15 +29,15 @@ from transformer_lens import HookedTransformer
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # ==== Custom Libraries ====
-import gen_data
-from utils import plot_ci_plus_heatmap
+import OLD_llama.gen_data as gen_data
+from utils_plot import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
 from reverse_tuned_lens import ReverseLens
-from dq_utils import proj, entropy, plot_ci, is_chinese_char, measure_performance
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap, get_logits_batched
-import intervention
-from intervention import Intervention
-from config_argparse import parse_args
+from utils.misc import proj, entropy, plot_ci, is_chinese_char, measure_performance
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap, get_logits_batched
+import src.intervention as intervention
+from src.intervention import Intervention
+from utils.config_argparse import parse_args
 from llama_merge_csv import construct_dataset
 # %%
 @dataclass
@@ -146,7 +146,7 @@ df_raw_data = construct_dataset(**cfg_dict)
 dataset = gen_data.gen_batched_dataset(df_raw_data, model.tokenizer, **cfg_dict)
 # %%
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
-from logit_lens import get_logits_batched
+from src.logit_lens import get_logits_batched
 suffix_toks = dataset['suffixes']
 prefix_toks = dataset['prompt_tok']
 

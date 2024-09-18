@@ -3,6 +3,9 @@ from dataclasses import fields
 import logging
 logging.basicConfig(level=logging.INFO)
 
+from typing import Any
+
+
 def str2bool(v):
     if isinstance(v, bool):
         return v

@@ -26,10 +26,10 @@ from transformer_lens import HookedTransformer, HookedTransformerKeyValueCache
 
 # %%
 # ==== Custom Libraries ====
-import gen_data
-from dq_utils import is_chinese_char, printd
-from config_argparse import try_parse_args
-import prefix
+import OLD_llama.gen_data as gen_data
+from utils.misc import is_chinese_char, printd
+from utils.config_argparse import try_parse_args
+import src.prefix as prefix
 __DEBUG__ = True
 # %%
 torch.set_grad_enabled(False)

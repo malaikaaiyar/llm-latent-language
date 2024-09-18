@@ -26,16 +26,18 @@ from transformer_lens import HookedTransformer
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # ==== Custom Libraries ====
-import gen_data
-from utils import plot_ci_plus_heatmap
+import OLD_llama.gen_data as gen_data
+from utils_plot import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
 from reverse_tuned_lens import ReverseLens
-from dq_utils import proj, entropy, plot_ci, is_chinese_char, measure_performance
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
-import intervention
-from intervention import Intervention
-from config_argparse import parse_args
+from utils.misc import proj, entropy, plot_ci, is_chinese_char, measure_performance
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+import src.intervention as intervention
+from src.intervention import Intervention
+from utils.config_argparse import parse_args
 # %%
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 @dataclass
 class Config:
     seed: int = 42
@@ -54,16 +56,7 @@ class Config:
     token_add_spaces: bool = True
     token_add_leading_byte: bool = False
     token_add_prefixes : bool = False
-    dataset_filter_correct : bool = True
-    use_tuned_lens : bool = False
-    interv_match_latent : bool = True
-    interv_steer_coeff : float = 1.0
-    start_layer_low : int = 0
-    start_layer_high : int = 32
-    end_layer_low : int = 0
-    end_layer_high : int = 32
     intervention_func : str = 'hook_reject_subspace'
-    log_file : str = 'DUMMY_NAME'
     metric : str = 'p_alt'
     metric_goal : str = 'max'
     use_reverse_lens : bool = False
@@ -98,16 +91,11 @@ seed = 42
 np.random.seed(seed)
 torch.manual_seed(seed)
 torch.set_grad_enabled(False)
-# %%
-pd.set_option('display.max_rows', 100)  # Show all rows
-pd.set_option('display.max_columns', None)  # Show all columns
-pd.set_option('display.width', None)  # Auto-detect the display width for wrapping
-pd.set_option('display.max_colwidth', None)  # Show full length of data in columns
 
 # %%
 
     
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 
 # tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=False, add_prefix_space=False)
 # tokenizer_vocab = tokenizer.get_vocab()
@@ -165,8 +153,8 @@ def calculate_iterations(start_lower, start_upper, end_lower, end_upper):
 total_iterations = calculate_iterations(start_lower, start_upper, end_lower, end_upper)
 outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
 
-import intervention
-from logit_lens import get_logits, plot_logit_lens_latents
+import src.intervention as intervention
+from src.logit_lens import get_logits, plot_logit_lens_latents
 
 def format_dict_single_line_custom(d):
     # Create a formatted string from dictionary entries

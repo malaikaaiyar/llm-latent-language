@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
-from dq_utils import plot_ci
+from utils.misc import plot_ci
 from torch import Tensor
 from jaxtyping import Float, Int
 from typing import List
@@ -19,7 +19,7 @@ import pandas as pd
 from matplotlib.colors import LogNorm
 import numpy as np
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
-import prefix
+import src.prefix as prefix
 from eindex import eindex
 from torch.utils.data import TensorDataset, DataLoader
 # %%

@@ -10,7 +10,7 @@ import warnings
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers import AutoTokenizer
 
-from dq_utils import tok_to_id, get_space_char, print_tok, raw_tok_to_id, plot_ci
+from utils.misc import tok_to_id, get_space_char, print_tok, raw_tok_to_id, plot_ci
 import json
 from dq import lang2name
 

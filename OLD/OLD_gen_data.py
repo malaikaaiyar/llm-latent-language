@@ -5,7 +5,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 import torch
 from transformers import AutoTokenizer
-from dq_utils import get_space_char, raw_tok_to_id, lang2name
+from utils.misc import get_space_char, raw_tok_to_id, lang2name
 import json
 
 @dataclass

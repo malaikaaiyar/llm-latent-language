@@ -25,11 +25,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformer_lens import HookedTransformer
 
 # ==== Custom Libraries ====
-import gen_data
-from utils import plot_ci_plus_heatmap
+import OLD_llama.gen_data as gen_data
+from utils_plot import plot_ci_plus_heatmap
 from tuned_lens_wrap import load_tuned_lens
-from dq_utils import proj, entropy, plot_ci, is_chinese_char
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from utils.misc import proj, entropy, plot_ci, is_chinese_char
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
 # %%
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

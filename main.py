@@ -34,14 +34,14 @@ from transformer_lens import HookedTransformer
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # ==== Custom Libraries ====
-import gen_data
-import prefix
+import OLD_llama.gen_data as gen_data
+import src.prefix as prefix
 from tuned_lens_wrap import load_tuned_lens
 #from reverse_tuned_lens import ReverseLens
-import dq_utils
-from logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
-from intervention import Intervention
-from config_argparse import try_parse_args
+import utils.misc as misc
+from src.logit_lens import get_logits, plot_logit_lens_latents, latent_heatmap
+from src.intervention import Intervention
+from utils.config_argparse import try_parse_args
 # %%
 
 @dataclass
@@ -215,10 +215,10 @@ def main(dataset, cfg):
     prompt = gen_data.generate_translation_prompt(None, cfg.src_lang, cfg.dest_lang)
     kv_cache = prefix.gen_kv_cache(prompt, model)
     
-    total_iterations = dq_utils.calculate_iterations(start_lower, start_upper, end_lower, end_upper)
+    total_iterations = misc.calculate_iterations(start_lower, start_upper, end_lower, end_upper)
     outer_pbar = tqdm(total=total_iterations, desc='Overall Progress', leave=True)
 
-    from logit_lens import get_logits, plot_logit_lens_latents
+    from src.logit_lens import get_logits, plot_logit_lens_latents
 
     for start_layer in range(start_lower,start_upper):
         for end_layer in range(end_lower, end_upper):
@@ -231,7 +231,7 @@ def main(dataset, cfg):
             logits_diff = logits_diff.float()
             stats = plot_logit_lens_latents(logits_diff, dataset, **cfg_dict, title="diff", cfg=cfg)
             
-            outer_pbar.set_description(f"Trying: {dq_utils.str_dict(stats)}")
+            outer_pbar.set_description(f"Trying: {misc.str_dict(stats)}")
             outer_pbar.update(1)  # Increment the progress bar after each inner iteration
             layer_log2[(start_layer, end_layer)] = stats
 
@@ -265,7 +265,7 @@ prefix.measure_performance(correct_dataset, model, **cfg_dict)
 
 # %%
 import importlib
-import logit_lens
+import src.logit_lens as logit_lens
 importlib.reload(logit_lens)
 importlib.reload(prefix)
 kv_cache, suffix_toks, _ = prefix.suffix_preamble(correct_dataset, model, cfg.src_lang, cfg.dest_lang)
@@ -278,7 +278,7 @@ log_probs_lang = torch.log(probs_lang).cpu()
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 langs = [cfg.src_lang, cfg.dest_lang, cfg.latent_lang]
 for log_prob, lang in zip(log_probs_lang, langs):
-    dq_utils.plot_ci(log_prob, ax, dim = 1, label=lang)
+    misc.plot_ci(log_prob, ax, dim = 1, label=lang)
 ax.set_title("Log Probabilities of Correct Dataset")
 ax.legend()
 plt.show()
@@ -286,5 +286,5 @@ plt.show()
 # %%
 if False:
     layer_log2, info = main(dataset, cfg)
-    dq_utils.write_log(layer_log2, cfg, info)
+    misc.write_log(layer_log2, cfg, info)
     
