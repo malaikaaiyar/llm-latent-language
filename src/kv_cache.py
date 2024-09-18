@@ -67,13 +67,17 @@ def run_with_kv_cache(tokens : Int[Tensor, "batch seq"],
     broadcast_kv_cache(kv_cache, len(tokens))
     tokens = tokens.to(device)
     
-    if names_filter == []:
-        logits = model(tokens, past_kv_cache=kv_cache)
-        return RunWithKVCacheResult(logits=logits, cache=None)
-    else:
-        with model.hooks(fwd_hooks = fwd_hooks):
-            logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
-            return RunWithKVCacheResult(logits=logits, cache=cache)    
+    with model.hooks(fwd_hooks = fwd_hooks):
+        logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
+        return RunWithKVCacheResult(logits=logits, cache=cache)
+    
+    # with model.hooks(fwd_hooks = fwd_hooks):
+    #     if names_filter == []:
+    #         logits = model(tokens, past_kv_cache=kv_cache)
+    #         return RunWithKVCacheResult(logits=logits, cache=None)
+    #     else:
+    #         logits, cache = model.run_with_cache(tokens, past_kv_cache=kv_cache, names_filter=names_filter)
+    #         return RunWithKVCacheResult(logits=logits, cache=cache)    
     
 def batched_predict_next(kv_cache : HookedTransformerKeyValueCache,
                            suffixes_toks : Int[Tensor, "batch seq"],

@@ -1,5 +1,8 @@
 # %%
 from .constants import LANG2NAME
+import torch
+from typing import List
+from collections import namedtuple
 
 def gen_prompt(src_words = None, 
                dest_words = None, 
@@ -29,13 +32,11 @@ def gen_prompt(src_words = None,
     assert len(src_words) in [len(dest_words), len(dest_words)+1] , "Need N or N+1 source words for N dest words"
 
     prompt = ""
-    for i in range(min(num_examples, len(src_words) - 1)):
+    for i in range(min(num_examples, len(src_words))):
         prompt += f'{LANG2NAME[src_lang]}: "{src_space}{src_words[i]}" - {LANG2NAME[dest_lang]}: "{dest_space}{dest_words[i]}"\n'
 
     # Add the last example without the destination translation
-    prompt += f'{LANG2NAME[src_lang]}: "{src_space}{src_words[-1]}" - {LANG2NAME[dest_lang]}: "'
-    if dest_lang == 'zh':
-        prompt += ' '
+    prompt += f'{LANG2NAME[src_lang]}: "'
 
     return prompt
 # %%
@@ -54,6 +55,27 @@ def gen_common_suffixes(src_words,
         common_suffixes.append(suffix)
     return common_suffixes
         
+TokenizedSuffixesResult = namedtuple('TokenizedSuffixesResult', 
+                                     ['input_ids', 'attention_mask', 'indices'], 
+                                     defaults=[None, None, None])
+        
+
+def tokenize_suffixes(suffixes : List[str], model):
+    device = next(model.parameters()).device
+    model.tokenizer.pad_token = model.tokenizer.eos_token
+    suffix_tokens, attn_mask = model.tokenizer(suffixes,
+                                                add_special_tokens=False,
+                                                return_tensors="pt",
+                                                padding=True).values()
+    indices = attn_mask.sum(dim=1)-1
+    assert torch.all(indices >= 0), "Attention mask has zeros, empty suffixes"
+    suffix_tokens = suffix_tokens.to(device)
+    
+    return TokenizedSuffixesResult(
+        input_ids=suffix_tokens,
+        attention_mask=attn_mask,
+        indices=indices
+    )
     
 
 # def generate_translation_prompt(word, src_lang=None, dest_lang=None, translations = translation_bank, **kwargs):
