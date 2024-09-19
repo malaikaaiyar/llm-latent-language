@@ -60,23 +60,65 @@ TokenizedSuffixesResult = namedtuple('TokenizedSuffixesResult',
                                      defaults=[None, None, None])
         
 
+#TODO: test
 def tokenize_suffixes(suffixes : List[str], model):
     device = next(model.parameters()).device
     model.tokenizer.pad_token = model.tokenizer.eos_token
-    suffix_tokens, attn_mask = model.tokenizer(suffixes,
+    
+    if "Llama-2" in model.tokenizer.name_or_path:
+        suffixes = ["🌍" + x for x in suffixes]
+        space_token_id = model.tokenizer.convert_tokens_to_ids("▁")
+        earth_token_id = model.tokenizer.convert_tokens_to_ids("🌍")
+        
+        suffix_tokens, attn_mask = model.tokenizer(suffixes,
                                                 add_special_tokens=False,
                                                 return_tensors="pt",
-                                                padding=True).values()
-    indices = attn_mask.sum(dim=1)-1
-    assert torch.all(indices >= 0), "Attention mask has zeros, empty suffixes"
+                                                padding=True)
+        
+        assert torch.all(raw_suffix_toks.input_ids[:, 0] == space_token_id), "llama2 has leading space token"
+        assert torch.all(raw_suffix_toks.input_ids[:, 1] == earth_id), "llama2 single token for 🌍"
+        
+        suffix_tokens = suffix_tokens[:, 2:]
+        attn_mask = attn_mask[:, 2:]
+        idx = attn_mask.sum(dim=1) - 3 #-1, and another two more: one for the space token, one for the 🌍 token
+    
+    else: # models that do not add leading spaces
+        suffix_tokens, attn_mask = model.tokenizer(suffixes,
+                                                add_special_tokens=False,
+                                                return_tensors="pt",
+                                                padding=True)
+        idx = attn_mask.sum(dim=1) - 1
+        
+    assert torch.all(idx >= 0), "Attention mask has zeros, empty suffixes"
     suffix_tokens = suffix_tokens.to(device)
     
     return TokenizedSuffixesResult(
         input_ids=suffix_tokens,
         attention_mask=attn_mask,
-        indices=indices
+        indices=idx
     )
     
+
+if "Llama-2" in cfg.model_name:
+    test_suffixes2 = ["🌍" + x for x in suffixes]
+    raw_suffix_toks = tokenize_suffixes(test_suffixes2, model)
+    space_token_id = model.tokenizer.convert_tokens_to_ids("▁")
+    earth_id = model.tokenizer.convert_tokens_to_ids("🌍")
+    #print(raw_suffix_toks)     
+    assert torch.all(raw_suffix_toks.input_ids[:, 0] == space_token_id), "llama2 has leading space token"
+    assert torch.all(raw_suffix_toks.input_ids[:, 1] == earth_id), "llama2 single token for 🌍"
+        # they add leading spaces :'(
+    
+    # suffix_toks.attention_mask = suffix_toks.attention_mask[:,1:]
+    suffix_toks = TokenizedSuffixesResult(input_ids=new_suffix_toks, 
+                                            attention_mask=new_attention_mask, 
+                                            indices=new_idx)
+else:
+    suffix_toks = tokenize_suffixes(suffixes, model)
+
+
+
+
 
 # def generate_translation_prompt(word, src_lang=None, dest_lang=None, translations = translation_bank, **kwargs):
 #     word = word.split('▁')[-1] if word is not None else None

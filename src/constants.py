@@ -37,3 +37,5 @@ LANG_BANK = {
     'hi': ['दिन',  'आदमी',   'पांच', 'नया'],
     'it': ['giorno','uomo',  'cinque','nuovo']
 }
+
+MODELS_TOK_LEADING_SPACE = ["Llama-2-7b-hf", "Llama-2-7b", "Llama-2-7b-llama", "Llama-2-7b-llama-hf"]
