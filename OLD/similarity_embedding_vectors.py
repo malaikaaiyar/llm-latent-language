@@ -4,7 +4,7 @@ from transformer_lens import HookedTransformer
 from tqdm import tqdm
 torch.set_grad_enabled(False)
 from transformers import AutoTokenizer
-from dq_utils import plot_ci, lang2name
+from utils.misc import plot_ci, lang2name
 import matplotlib.pyplot as plt
 import json
 from dataclasses import dataclass, field

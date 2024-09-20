@@ -3,7 +3,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 import torch
 from transformers import AutoTokenizer
-from dq_utils import get_space_char, get_tok_prefix_ids, raw_tok_to_id, lang2name, is_chinese_char, print_tok
+from utils.misc import get_space_char, get_tok_prefix_ids, raw_tok_to_id, lang2name, is_chinese_char, print_tok
 from transformer_lens import HookedTransformer
 import json
 from tqdm import tqdm
