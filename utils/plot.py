@@ -22,7 +22,7 @@ plt.rcParams.update({
 plt_params = {'linewidth': 2.2}
 
 
-def plot_ci(data, ax, dim=1, **kwargs):
+def plot_ci_simple(data, ax, dim=1, **kwargs):
     """
     Plots the mean and confidence interval of the given data on the specified axis.
 

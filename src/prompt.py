@@ -64,7 +64,6 @@ TokenizedSuffixesResult = namedtuple('TokenizedSuffixesResult',
 def tokenize_suffixes(suffixes : List[str], model):
     device = next(model.parameters()).device
     model.tokenizer.pad_token = model.tokenizer.eos_token
-    
     if "Llama-2" in model.tokenizer.name_or_path:
         suffixes = ["🌍" + x for x in suffixes]
         space_token_id = model.tokenizer.convert_tokens_to_ids("▁")
@@ -73,21 +72,21 @@ def tokenize_suffixes(suffixes : List[str], model):
         suffix_tokens, attn_mask = model.tokenizer(suffixes,
                                                 add_special_tokens=False,
                                                 return_tensors="pt",
-                                                padding=True)
+                                                padding=True).values()
         
-        assert torch.all(raw_suffix_toks.input_ids[:, 0] == space_token_id), "llama2 has leading space token"
-        assert torch.all(raw_suffix_toks.input_ids[:, 1] == earth_id), "llama2 single token for 🌍"
+        assert torch.all(suffix_tokens[:, 0] == space_token_id), "llama2 has leading space token"
+        assert torch.all(suffix_tokens[:, 1] == earth_token_id), "llama2 single token for 🌍"
         
         suffix_tokens = suffix_tokens[:, 2:]
         attn_mask = attn_mask[:, 2:]
-        idx = attn_mask.sum(dim=1) - 3 #-1, and another two more: one for the space token, one for the 🌍 token
+        idx = attn_mask.sum(dim=-1) - 1 #-1, and another two more: one for the space token, one for the 🌍 token
     
     else: # models that do not add leading spaces
         suffix_tokens, attn_mask = model.tokenizer(suffixes,
                                                 add_special_tokens=False,
                                                 return_tensors="pt",
-                                                padding=True)
-        idx = attn_mask.sum(dim=1) - 1
+                                                padding=True).values()
+        idx = attn_mask.sum(dim=-1) - 1
         
     assert torch.all(idx >= 0), "Attention mask has zeros, empty suffixes"
     suffix_tokens = suffix_tokens.to(device)
@@ -98,23 +97,107 @@ def tokenize_suffixes(suffixes : List[str], model):
         indices=idx
     )
     
+def find_all_tokens(token_str: str, vocab, **kwargs):
+    """
+    Finds all valid tokens in a given token string based on the provided vocabulary.
 
-if "Llama-2" in cfg.model_name:
-    test_suffixes2 = ["🌍" + x for x in suffixes]
-    raw_suffix_toks = tokenize_suffixes(test_suffixes2, model)
-    space_token_id = model.tokenizer.convert_tokens_to_ids("▁")
-    earth_id = model.tokenizer.convert_tokens_to_ids("🌍")
-    #print(raw_suffix_toks)     
-    assert torch.all(raw_suffix_toks.input_ids[:, 0] == space_token_id), "llama2 has leading space token"
-    assert torch.all(raw_suffix_toks.input_ids[:, 1] == earth_id), "llama2 single token for 🌍"
-        # they add leading spaces :'(
+    Args:
+        token_str (str): The token string to search for tokens in.
+        vocab (list): The vocabulary list containing valid tokens.
+        **kwargs: Additional keyword arguments for customization.
+
+    Keyword Args:
+        token_add_prefixes (bool): Whether to add prefixes of the token string as tokens (default: True).
+        token_add_spaces (bool): Whether to add tokens with spaces at the beginning (default: True).
+        token_add_leading_byte (bool): Whether to add the leading byte of non-ASCII tokens as tokens (default: True).
+        return_tensors (str): The type of tensors to return ('str' or 'pt', default: 'str').
+
+    Returns:
+        list or torch.Tensor: The list of valid tokens or a tensor of token indices.
+
+    """
     
-    # suffix_toks.attention_mask = suffix_toks.attention_mask[:,1:]
-    suffix_toks = TokenizedSuffixesResult(input_ids=new_suffix_toks, 
-                                            attention_mask=new_attention_mask, 
-                                            indices=new_idx)
-else:
-    suffix_toks = tokenize_suffixes(suffixes, model)
+    def token_prefixes(token_str: str):
+        return [token_str[:i] for i in range(1, len(token_str)+1)]
+
+    def add_spaces(tokens):
+        return ['▁' + t for t in tokens]        
+    
+    
+    def unicode_leading_byte(token_str : str):
+            """
+            Returns the leading byte of a given token string if it is outside the ASCII range.
+
+            Args:
+                token_str (str): The token string to check.
+
+            Returns:
+                str or None: The leading byte of the token string if it is outside the ASCII range, None otherwise.
+            """
+            leading_byte = token_str.encode("utf-8")[0]
+            if leading_byte >= 128: #outside ASCII range
+                leading_byte = f'<0x{(token_str.encode("utf-8")[0]):X}>' # "好" -> "<0xE5>" 
+                return leading_byte
+            else:
+                return None
+    
+    token_str = token_str.strip()
+    
+    if token_str[0] == '▁' or token_str[0] == 'Ġ':
+        token_str = token_str[1:]
+    
+    token_add_prefixes = kwargs.get('token_add_prefixes', True)
+    token_add_spaces = kwargs.get('token_add_spaces', True)
+    token_add_capitalization = kwargs.get('token_add_capitalization', True)
+    token_add_leading_byte = kwargs.get('token_add_leading_byte', True)
+    return_tensors = kwargs.get('return_tensors', 'pt')
+    debug = kwargs.get('debug', False)
+    
+    token_strs = set([token_str])
+    
+    if token_add_capitalization:
+        token_strs = token_strs | set([token_str.lower(), token_str.capitalize(), token_str.upper()])
+
+    if token_add_prefixes:
+        new_token_strs = set()
+        for tok in token_strs:
+            new_token_strs = new_token_strs | set(token_prefixes(tok))
+        token_strs = new_token_strs
+    
+    if token_add_spaces:
+        token_strs = token_strs | set(add_spaces(token_strs))
+    
+    if token_add_leading_byte:
+        tokid = unicode_leading_byte(token_str)
+        if tokid is not None and tokid in vocab:
+            token_strs.add(tokid)
+    
+    final_tokens = set([tok for tok in set(token_strs) if tok in vocab])
+    if debug:
+        print(final_tokens)
+    # just add leading byte for all languages unless it's in ascii range
+    
+    if return_tensors == "str":
+        return final_tokens
+    else:
+        return torch.LongTensor([vocab[x] for x in final_tokens])
+
+# if "Llama-2" in cfg.model_name:
+#     test_suffixes2 = ["🌍" + x for x in suffixes]
+#     raw_suffix_toks = tokenize_suffixes(test_suffixes2, model)
+#     space_token_id = model.tokenizer.convert_tokens_to_ids("▁")
+#     earth_id = model.tokenizer.convert_tokens_to_ids("🌍")
+#     #print(raw_suffix_toks)     
+#     assert torch.all(raw_suffix_toks.input_ids[:, 0] == space_token_id), "llama2 has leading space token"
+#     assert torch.all(raw_suffix_toks.input_ids[:, 1] == earth_id), "llama2 single token for 🌍"
+#         # they add leading spaces :'(
+    
+#     # suffix_toks.attention_mask = suffix_toks.attention_mask[:,1:]
+#     suffix_toks = TokenizedSuffixesResult(input_ids=new_suffix_toks, 
+#                                             attention_mask=new_attention_mask, 
+#                                             indices=new_idx)
+# else:
+#     suffix_toks = tokenize_suffixes(suffixes, model)
 
 
 
@@ -143,3 +226,4 @@ else:
 #     #     prompt += ' '
     
 #     return prompt
+# %%
