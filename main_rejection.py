@@ -5,9 +5,10 @@
 from imports import *
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # ==== Custom Libraries ====
-from src.prompt import gen_prompt, gen_common_suffixes, tokenize_suffixes, TokenizedSuffixesResult, find_all_tokens
+from src.prompt import gen_prompt, gen_common_suffixes, safe_tokenize, TokenizedSuffixesResult, find_all_tokens
 from src.kv_cache import gen_kv_cache, run_with_kv_cache
 from src.llm import suffix_preamble, run, measure_performance
+from src.intervention import Intervention
 from utils.plot import plot_ci_simple
 from utils.config_argparse import try_parse_args
 from src.constants import LANG2NAME, LANG_BANK
@@ -17,6 +18,7 @@ import warnings
 import re
 from transformers import AutoTokenizer
 from transformer_lens import HookedTransformer, HookedTransformerKeyValueCache
+
 from transformer_lens.utils import test_prompt
 # Import GPT-2 tokenizer
 gpt2_tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -33,7 +35,7 @@ class Config:
     src_lang: str = 'fr'
     dest_lang: str = 'zh'
     latent_lang: str = 'en'
-    model_name: str = "meta-llama/Llama-2-7b-hf" #'gpt2' #'meta-llama/Meta-Llama-3-8B'
+    model_name: str = "meta-llama/Llama-2-7b-hf" # 'meta-llama/Meta-Llama-3-8B'
     # single_token_only: bool = False
     # multi_token_only: bool = False
     # out_dir: str = './visuals'
@@ -65,7 +67,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 #LOAD_MODEL = False
 if 'LOAD_MODEL' not in globals():
     model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
-                                                            device=device, 
+                                                            device=device,
                                                             dtype = torch.float16)
     tokenizer = model.tokenizer
     tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore
@@ -73,40 +75,17 @@ if 'LOAD_MODEL' not in globals():
 # %%
 df = pd.read_csv(cfg.dataset_path, delimiter = '\t') 
 
-# %%
+src_multishot = LANG_BANK[cfg.src_lang]
+dest_multishot = LANG_BANK[cfg.dest_lang]
+dest_words = df[cfg.src_lang]
 
-src_words = LANG_BANK[cfg.src_lang]
-dest_words = LANG_BANK[cfg.dest_lang]
-suffix_words = df[cfg.src_lang]
-
-# %%
-
-# %%
-def sanity_check(suffix_words):
-    prompt = gen_prompt(src_words = src_words,
-                    dest_words = dest_words,
-                    src_lang = cfg.src_lang, 
-                    dest_lang = cfg.dest_lang,
-                    num_examples=cfg.num_multi_shot)
-    kv_cache = gen_kv_cache(prompt, model)
-    suffixes = gen_common_suffixes(suffix_words,
-                                    src_lang = cfg.src_lang,
-                                    dest_lang = cfg.dest_lang)
-    suffix_toks = tokenize_suffixes(suffixes, model)
-    result = run_with_kv_cache(suffix_toks.input_ids, kv_cache, model)
-    logits = eindex(result.logits, suffix_toks.indices, "batch [batch] vocab")
-    translated = list(zip(df[cfg.src_lang][:10], model.tokenizer.convert_ids_to_tokens(logits.argmax(dim=-1))))
-    
-    print(tabulate(translated, headers=[f'{cfg.src_lang=}', f'{cfg.dest_lang=}']))
-    
-sanity_check(suffix_words)
-# %%
+prompt = gen_prompt(src_words = src_multishot,
+                dest_words = dest_multishot,
+                src_lang = cfg.src_lang, 
+                dest_lang = cfg.dest_lang,
+                num_examples=cfg.num_multi_shot)
 
 # %%
-from torch.utils.data import DataLoader, TensorDataset, IterableDataset, Dataset
-
-# %%
-
 def parse_word_list(s):
     # Remove the outer brackets and split by commas
     try:
@@ -127,32 +106,84 @@ def parse_word_list(s):
             result.append(item)
     
         return result
+# %%
+def padded_tensor(tensor_list):
+    # Find the maximum length and d_model
+    max_length = max(tensor.size(0) for tensor in tensor_list)
+    d_model = tensor_list[0].size(-1)
+    K = len(tensor_list)
+    
+    # Create the output tensor directly
+    result = torch.zeros((K, max_length, d_model), dtype=tensor_list[0].dtype, device=tensor_list[0].device)
+    
+    # Fill the output tensor
+    for i, tensor in enumerate(tensor_list):
+        result[i, :tensor.size(0)] = tensor
+    
+    return result
 
-def build_lang_idx(df_col, lang, vocab, **kwargs):
+# %%
+def sanity_check(df):
+    
+    src_multishot = LANG_BANK[cfg.src_lang]
+    dest_multishot = LANG_BANK[cfg.dest_lang]
+    dest_words = df[cfg.src_lang]
+    
+    prompt = gen_prompt(src_words = src_multishot,
+                    dest_words = dest_multishot,
+                    src_lang = cfg.src_lang, 
+                    dest_lang = cfg.dest_lang,
+                    num_examples=cfg.num_multi_shot)
+    kv_cache = gen_kv_cache(prompt, model)
+    suffixes = gen_common_suffixes(dest_words,
+                                    src_lang = cfg.src_lang,
+                                    dest_lang = cfg.dest_lang)
+    suffix_toks = safe_tokenize(suffixes, model)
+    result = run_with_kv_cache(suffix_toks.input_ids, kv_cache, model)
+    
+    intervention = Intervention("hook_batch_reject", range(model.cfg.n_layers))
+    
+    logits = eindex(result.logits, suffix_toks.indices, "batch [batch] vocab")
+    translated = list(zip(df[cfg.src_lang][:10], model.tokenizer.convert_ids_to_tokens(logits.argmax(dim=-1))))
+    
+    print(tabulate(translated, headers=[f'{cfg.src_lang=}', f'{cfg.dest_lang=}']))
+
+    print(list(zip(model.tokenizer.convert_ids_to_tokens(logits.argmax(dim=-1)), 
+                   [x.item() for x in torch.softmax(logits, dim=-1).max(dim=-1).values])))
+sanity_check(df)
+# %%
+
+from torch.utils.data import DataLoader, TensorDataset, IterableDataset, Dataset
+
+# %%
+
+def build_lang_idx(df, lang, model, cfg):
     array = []
-    word_list_key = kwargs.get('word_list_key', f'claude')
-    for primary, word_list in df[[lang, f'{word_list_key}_{lang}']].values:
+    for primary, word_list in df[[lang, f'{cfg.word_list_key}_{lang}']].values:
         row_list = parse_word_list(word_list)
         row_list.append(primary)
-        tokens = [find_all_tokens(x, vocab, **cfg_dict) for x in row_list]
-        try:
-            idx = torch.unique(torch.cat(tokens))
-        except:
-            print(f'{i=}')
-            print(f'{row=}')
-            print(f'{row_list=}')
-            print(f'{tokens=}')
+        if lang not in ["zh", "ko", "jp"]:
+            padded_list = [" " + x for x in row_list] + row_list
+        else:
+            padded_list = row_list
             
-        array.append(idx)
+        all_tokens = safe_tokenize(padded_list, model).input_ids[:, 0]
+        
+        if lang in ["zh", "ko", "jp"]:
+            leading_bytes = torch.Tensor(model.tokenizer.convert_tokens_to_ids([f'<0x{(x.encode("utf-8")[0]):X}>' for x in row_list]))
+            all_tokens = torch.cat([leading_bytes.to(torch.long).to(device), all_tokens])
+        
+        all_tokens = torch.unique(all_tokens)
+        array.append(all_tokens)
     return array
 
-LangIdx = namedtuple('LangIdx', ['src_idx', 'dest_idx', 'latent_idx'],
+LangIdx = namedtuple('LangIdx', ['src_idx', 'latent_idx', 'dest_idx'],
                      defaults=[None, None, None])
 
-def create_lang_idx(df, vocab, **kwargs):
-    src_idx = build_lang_idx(df, cfg.src_lang, vocab, **kwargs)
-    dest_idx = build_lang_idx(df, cfg.dest_lang, vocab,**kwargs)
-    latent_idx = build_lang_idx(df, cfg.latent_lang, vocab,**kwargs)
+def create_lang_idx(df, model, cfg):
+    src_idx = build_lang_idx(df, cfg.src_lang, model, cfg)
+    dest_idx = build_lang_idx(df, cfg.dest_lang,model, cfg)
+    latent_idx = build_lang_idx(df, cfg.latent_lang,model,cfg)
     
     assert len(src_idx) == len(dest_idx), "Mismatch between src_idx and dest_idx lengths"
     assert len(src_idx) == len(latent_idx), "Mismatch between src_idx and latent_idx lengths"
@@ -209,11 +240,10 @@ class MixedDataset(Dataset):
 
 # %%
 @torch.no_grad
-def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache, 
+def logit_lens_with_cache(kv_cache : HookedTransformerKeyValueCache, 
                        suffix_toks : TokenizedSuffixesResult,
                        model,
                        lang_idx : LangIdx,
-                       tuned_lens = None, 
                        intervention=None,
                        **kwargs):
     
@@ -221,24 +251,27 @@ def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache,
     
     batch_size = kwargs.get('batch_size', 1)
     use_tuned_lens = kwargs.get('use_tuned_lens', False)
-    use_tuned_lens = kwargs.get('use_tuned_lens', False)
     
     #return_float = kwargs.get('return_float', False)
     
-    fwd_hooks = [] if intervention is None else intervention.fwd_hooks(model, **kwargs)
-    all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
+    
+    ALL_POST_RESID = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
     
     dataset = MixedDataset(suffix_toks, lang_idx)
     dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=MixedDataset.collate_fn)
 
-    runner = tqdm(dataloader, total=len(suffix_toks), desc="Computing logits", position=0, leave=True)
+    runner = tqdm(dataloader, total=len(suffix_toks.input_ids), desc="Computing logits", position=0, leave=True)
     
     all_src_probs = []
     all_latent_probs = []
-    all_dest_probs = []
+    all_dest_probs = []    
     
     for i, (toks, toks_mask, toks_idx, src_idx, latent_idx, dest_idx) in enumerate(runner):
-        _, cache = run_with_kv_cache(toks, kv_cache, model, fwd_hooks = fwd_hooks, names_filter = all_post_resid)
+        
+        latent_subspace = padded_tensor([model.unembed.W_U.T[lat] for lat in latent_idx])
+        
+        fwd_hooks = [] if intervention is None else intervention.fwd_hooks(model, rejection_subspaces = latent_subspace)
+        _, cache = run_with_kv_cache(toks, kv_cache, model, fwd_hooks = fwd_hooks, names_filter = ALL_POST_RESID)
         
         latents = torch.stack(tuple(cache.values()), dim=1) # (batch, num_layers, seq, d_model)
         latents = eindex(latents, toks_idx, "batch num_layers [batch] d_model") # (batch, num_layers, d_model)
@@ -250,7 +283,7 @@ def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache,
             
         probs = torch.softmax(approx_logits, dim=-1) # (batch, num_layers, vocab)
         
-        
+        src_probs = eindex(probs, src_idx, "batch num_layers vocab") # (batch, num_layers)
         for batch, (src, latent, dest) in enumerate(zip(src_idx, latent_idx, dest_idx)):
             src_probs = probs[batch, :, src].sum(dim=-1)  # (n_layers)
             latent_probs = probs[batch, :, latent].sum(dim=-1)  # (n_layers)
@@ -259,7 +292,7 @@ def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache,
             all_latent_probs.append(latent_probs)
             all_dest_probs.append(dest_probs)
         
-        runner.update(len(toks))
+        runner.update(batch_size)
         
     all_src_probs = torch.stack(all_src_probs, dim=-1) #(bs, n)
     all_latent_probs = torch.stack(all_latent_probs, dim=-1) #(bs, n)
@@ -269,30 +302,67 @@ def logit_lens_batched(kv_cache : HookedTransformerKeyValueCache,
     return all_probs
 
 # %%
-def run(cfg):
-    prompt = gen_prompt(src_words = src_words,
-                        dest_words = dest_words,
-                        src_lang = cfg.src_lang, 
-                        dest_lang = cfg.dest_lang,
-                        num_examples=cfg.num_multi_shot)
-    kv_cache = gen_kv_cache(prompt, model)
-    lang_idx = create_lang_idx(df, model.tokenizer.vocab, **cfg_dict)
+def plot_prob_flow(probs):
+    fig, ax = plt.subplots()
+    plot_ci_simple(probs[0].cpu(), ax, dim=1, label=f'src={cfg.src_lang}')
+    plot_ci_simple(probs[1].cpu(), ax, dim=1, label=f'latent={cfg.latent_lang}')
+    plot_ci_simple(probs[2].cpu(), ax, dim=1, label=f'dest={cfg.dest_lang}')
+    ax.legend()
+    plt.show()
+# %%
 
-    suffixes = gen_common_suffixes(suffix_words,
+def run_rejection(df, cfg):
+    src_multishot = LANG_BANK[cfg.src_lang]
+    dest_multishot = LANG_BANK[cfg.dest_lang]
+    dest_words = df[cfg.src_lang]
+    
+    prompt = gen_prompt(src_words = src_multishot,
+                    dest_words = dest_multishot,
+                    src_lang = cfg.src_lang, 
+                    dest_lang = cfg.dest_lang,
+                    num_examples=cfg.num_multi_shot)
+    kv_cache = gen_kv_cache(prompt, model)
+    kv_cache.freeze()
+    suffixes = gen_common_suffixes(dest_words,
                                     src_lang = cfg.src_lang,
                                     dest_lang = cfg.dest_lang)
-    suffix_toks = tokenize_suffixes(suffixes, model)
-    probs =  logit_lens_batched(kv_cache, suffix_toks, model, lang_idx, batch_size = 8)
-    return probs
-
-cfg = Config(token_add_prefixes=True, word_list_key="claude")
-probs = run(cfg)
+    suffix_toks = safe_tokenize(suffixes, model)
+    lang_idx = create_lang_idx(df, model, cfg)
+    intervention = Intervention("hook_batch_reject_slow", range(model.cfg.n_layers))
+    probs_clean = logit_lens_with_cache(kv_cache, suffix_toks, model, lang_idx, intervention=None, batch_size=cfg.batch_size)
+    
+    
+    kv_cache = gen_kv_cache(prompt, model)
+    kv_cache.freeze()
+    probs_reject = logit_lens_with_cache(kv_cache, suffix_toks, model, lang_idx, intervention=intervention, batch_size=cfg.batch_size)
+    
+    plot_prob_flow(probs_clean)
+    plot_prob_flow(probs_reject)
+    
+cfg.batch_size = 8
+run_rejection(df, cfg)
 # %%
-fig, ax = plt.subplots()
-plot_ci_simple(probs[0].cpu(), ax, dim=1, label=f'src={cfg.src_lang}')
-plot_ci_simple(probs[1].cpu(), ax, dim=1, label=f'latent={cfg.latent_lang}')
-plot_ci_simple(probs[2].cpu(), ax, dim=1, label=f'dest={cfg.dest_lang}')
-ax.legend()
-plt.show()
+
+# def run(df, cfg):
+#     prompt = gen_prompt(src_words = src_words,
+#                         dest_words = dest_words,
+#                         src_lang = cfg.src_lang, 
+#                         dest_lang = cfg.dest_lang,
+#                         num_examples=cfg.num_multi_shot)
+#     kv_cache = gen_kv_cache(prompt, model)
+#     lang_idx = create_lang_idx(df, model.tokenizer.vocab, **cfg_dict)
+
+#     suffixes = gen_common_suffixes(suffix_words,
+#                                     src_lang = cfg.src_lang,
+#                                     dest_lang = cfg.dest_lang)
+#     suffix_toks = safe_tokenize(suffixes, model)
+#     probs =  logit_lens_batched(kv_cache, suffix_toks, model, lang_idx, batch_size = 8)
+#     return probs
+
+# cfg = Config(token_add_prefixes=True, word_list_key="claude")
+# probs = run(cfg)
+# %%
+
+#plot_prob_flow(probs)
 # %%
 #test_prompt(prompt + suffixes[86], "<0xE5>", model)

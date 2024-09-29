@@ -21,6 +21,11 @@ plt.rcParams.update({
 
 plt_params = {'linewidth': 2.2}
 
+def plot_ci_series(datas, dim=1):
+    fig, ax = plt.subplots()
+    for data in datas:
+        plot_ci_simple(data, ax, dim=dim)
+    plt.show()
 
 def plot_ci_simple(data, ax, dim=1, **kwargs):
     """

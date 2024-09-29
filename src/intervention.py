@@ -3,10 +3,11 @@ from torch import Tensor
 import torch
 from jaxtyping import Int, Float
 from transformer_lens.hook_points import HookPoint
-from utils.misc import proj
 from beartype import beartype
 import inspect
 import re
+from src.llm import proj_batched, proj, proj_batched_slow
+from eindex import eindex
 # class Intervention:
 #     def __init__(self, func: Callable[..., Tensor], layers: List[int]):
 #         self.func = func
@@ -45,6 +46,54 @@ class Intervention:
 
 # Example usage assuming hook functions are defined and available globally
 # hook_reject_subspace is supposed to be a previously defined function
+
+def hook_batch_reject(
+    resid: Float[Tensor, "batch seq dmodel"],
+    hook: HookPoint,
+    model,
+    rejection_subspaces: Float[Tensor, "batch numvec dmodel"] = None,
+    latent_ids: Int[Tensor, "batch numvec"] = None,
+    suffix_idx : Int[Tensor, "batch"] = None,
+    fast = True,
+    **kwargs
+) -> Float[Tensor, "batch seq dmodel"]:
+    """
+    latent_ids (batch, tokens) : The latent token ids to be used for rejections, for each batch
+    latent_ids_mask (batch, tokens) : The mask for latent_ids, as they are of different lengths
+    """
+    if not fast:
+        assert latent_ids is not None, "latent_ids must be provided"
+        assert suffix_idx is not None, "suffix_idx must be provided"
+        
+        d_model, d_vocab = model.unembed.W_U.shape
+        assert 0 <= latent_ids.min() and latent_ids.max() < d_vocab, "latent_ids must be in the range [0, d_vocab)"
+    
+    if fast:
+        assert rejection_subspaces is not None, "rejection_subspaces must be provided"
+        assert rejection_subspaces.ndim == 3, "rejection_subspaces must be of shape (batch, numvec, dmodel)"
+        assert rejection_subspaces.shape[2] == resid.shape[2], f"rejection_subspaces must have the same dmodel as resid, have shape {rejection_subspaces.shape}"
+    # resid of shape (batch, suffix_len, dmodel)
+    
+    resid_copy = resid.clone()
+    
+    v = eindex(resid_copy, suffix_idx, "batch [batch] dmodel") 
+    
+    if not fast:
+        new_v = torch.empty_like(v) # (batch, dmodel)
+        for b in range(v.shape[0]):
+            non_unk_lat_idx = latent_ids[b][latent_ids[b] != model.tokenizer.unk_token_id]
+            subspace = model.unembed.W_U.T[non_unk_lat_idx]
+            new_v[b] = v[b] - proj(v[b].float(), subspace.float()).half()
+    else:
+        new_v = v - proj_batched(v.float(), rejection_subspaces.float()).half()
+    # new_v = torch.empty_like(v)
+    
+    idx = torch.arange(v.shape[0], dtype=torch.long, device=v.device)
+    resid_copy[idx, suffix_idx[idx]] = new_v
+    
+    return resid_copy
+
+
 
 def hook_move_subspace(
     resid: Float[Tensor, "batch seq dmodel"],
@@ -145,15 +194,10 @@ def hook_reject_subspace(
     hook: HookPoint,
     model,
     latent_ids : Int[Tensor, "num_latent_tokens"] = None,
-    alt_latent_ids : Int[Tensor, "num_alt_latent_tokens"] = None,
-    interv_match_latent : bool = True,
     **kwargs
 ) -> Float[Tensor, "batch seq dmodel"]:
     # modify attn_pattern (can be inplace)
-    if interv_match_latent:
-        subspace = model.unembed.W_U.T[latent_ids]
-    else:
-        subspace = model.unembed.W_U.T[alt_latent_ids]
+    subspace = model.unembed.W_U.T[latent_ids]
         
     last_tblock = resid[:, -1]
     # subspace = W_U.T[latent_tok_ids]

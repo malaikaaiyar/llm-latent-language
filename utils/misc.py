@@ -44,3 +44,11 @@ def is_chinese_char(ch):
         if start <= c <= end:
             return True
     return False
+
+def ci(data, dim=0, debug = False):
+    mean = data.mean(dim=dim)
+    std = data.std(dim=dim)
+    sem95 = 1.96 * std / (len(data)**0.5) 
+    if debug:
+        print(f"{mean} ± {sem95}")
+    return mean, sem95
