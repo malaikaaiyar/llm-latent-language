@@ -193,4 +193,8 @@ for use_alt_latent in [True, False]:
 results_interv_no_alt = {k[1:]: v for k, v in results_interv.items() if not k[0]}
 results_interv_alt = {k[1:]: v for k, v in results_interv.items() if k[0]}
 # %%
-results_dict_to_csv
+short_model_name = cfg.model_name.split("/")[-1]
+results_dict_to_csv(results, os.path.join(cfg.out_dir, short_model_name, "translation_no_interv.csv"))
+results_dict_to_csv(results_interv_no_alt, os.path.join(cfg.out_dir, short_model_name, "translation_interv.csv"))
+results_dict_to_csv(results_interv_alt, os.path.join(cfg.out_dir, short_model_name, "translation_interv_alt.csv"))
+# %%
