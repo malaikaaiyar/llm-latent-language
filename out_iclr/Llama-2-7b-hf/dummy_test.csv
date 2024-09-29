@@ -1,0 +1,4 @@
+src_lang,dest_lang,latent_lang,avg,sem95_error
+en,zh,,0.5,0.1
+fr,es,,0.6,0.2
+de,ru,,0.7,0.3

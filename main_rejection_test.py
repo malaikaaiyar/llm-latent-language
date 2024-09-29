@@ -21,8 +21,8 @@ from transformer_lens import HookedTransformer, HookedTransformerKeyValueCache
 from src.kv_cache import broadcast_kv_cache
 from transformer_lens.utils import test_prompt
 # Import GPT-2 tokenizer
-gpt2_tokenizer = AutoTokenizer.from_pretrained("gpt2")
-llama_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+#gpt2_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+#llama_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 #disable gradients
 torch.set_grad_enabled(False)
 
@@ -35,7 +35,7 @@ class Config:
     src_lang: str = 'fr'
     dest_lang: str = 'zh'
     latent_lang: str = 'en'
-    model_name: str = "google/gemma-2-2b" # 'meta-llama/Meta-Llama-3-8B'
+    model_name: str = 'meta-llama/Llama-2-13b-hf'
     # single_token_only: bool = False
     # multi_token_only: bool = False
     # out_dir: str = './visuals'
@@ -71,6 +71,9 @@ if 'LOAD_MODEL' not in globals():
                                                             dtype = torch.float16)
     tokenizer = model.tokenizer
     tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore
+    if model.tokenizer.unk_token_id is None:
+        model.tokenizer.unk_token_id = model.tokenizer.bos_token_id
+        
     LOAD_MODEL = False    
 # %%
 df = pd.read_csv(cfg.dataset_path, delimiter = '\t') 
@@ -298,7 +301,8 @@ def gen_ids(df, lang):
         dest_ids = dest_ids[dest_ids != space_tok]
         dest_ids = torch.unique(dest_ids)
         all_ids.append(dest_ids)
-    all_ids = torch.nn.utils.rnn.pad_sequence(all_ids, batch_first=True, padding_value=model.tokenizer.unk_token_id)
+    all_ids = torch.nn.utils.rnn.pad_sequence(all_ids, batch_first=True, 
+                                              padding_value=model.tokenizer.unk_token_id)
     return all_ids
     
 

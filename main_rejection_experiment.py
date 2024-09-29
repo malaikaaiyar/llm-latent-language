@@ -1,6 +1,6 @@
 # %%
-%load_ext autoreload
-%autoreload 2
+# %load_ext autoreload
+# %autoreload 2
 # %%
 from imports import *
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -56,7 +56,7 @@ class Config:
 cfg = Config()
 cfg = try_parse_args(cfg)
 cfg_dict = asdict(cfg)
-    
+print(cfg_dict)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 os.makedirs(cfg.out_dir, exist_ok=True)
 
@@ -194,6 +194,9 @@ results_interv_no_alt = {k[1:]: v for k, v in results_interv.items() if not k[0]
 results_interv_alt = {k[1:]: v for k, v in results_interv.items() if k[0]}
 # %%
 short_model_name = cfg.model_name.split("/")[-1]
+
+os.makedirs(os.path.join(cfg.out_dir, short_model_name), exist_ok=True)
+
 results_dict_to_csv(results, os.path.join(cfg.out_dir, short_model_name, "translation_no_interv.csv"))
 results_dict_to_csv(results_interv_no_alt, os.path.join(cfg.out_dir, short_model_name, "translation_interv.csv"))
 results_dict_to_csv(results_interv_alt, os.path.join(cfg.out_dir, short_model_name, "translation_interv_alt.csv"))
