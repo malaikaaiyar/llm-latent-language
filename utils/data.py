@@ -81,7 +81,7 @@ def gen_ids(df, model, lang):
     return all_ids
 
 
-def results_dict_to_csv(data, output_file):
+def results_dict_to_csv(data, output_file, latent=False):
     # Ask for the output file name
 
     # Open the file in write mode
@@ -90,7 +90,10 @@ def results_dict_to_csv(data, output_file):
         writer = csv.writer(csvfile)
 
         # Write the header row
-        writer.writerow(['src_lang', 'dest_lang', 'latent_lang', 'avg', 'sem95_error'])
+        if latent:
+            writer.writerow(['src_lang', 'dest_lang', 'latent_lang', 'avg_dest', 'sem95_error_dest', 'avg_latent', 'sem95_error_latent'])
+        else:
+            writer.writerow(['src_lang', 'dest_lang', 'latent_lang', 'avg', 'sem95_error'])
 
         # Iterate through the dictionary items
         for key, value in data.items():
@@ -101,10 +104,15 @@ def results_dict_to_csv(data, output_file):
             else:
                 src_lang, dest_lang, latent_lang = key
 
-            avg, sem95_error = value
+            if latent:
+                avg_dest, sem95_error_dest, avg_latent, sem95_error_latent = value
+                writer.writerow([src_lang, dest_lang, latent_lang, avg_dest, sem95_error_dest, avg_latent, sem95_error_latent])
+            else:
+                avg, sem95_error = value
+                writer.writerow([src_lang, dest_lang, latent_lang, avg, sem95_error])
 
             # Write the row to the CSV file
-            writer.writerow([src_lang, dest_lang, latent_lang, avg, sem95_error])
+            
 
     print(f"CSV file '{output_file}' has been created successfully.")
 
