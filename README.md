@@ -1,7 +1,3 @@
-# Logit lens plot colab
-
-[Try out your own prompts here.](https://colab.research.google.com/drive/1l6qN-hmCV4TbTcRZB5o6rUk_QPHBZb7K?usp=sharing)
-
 # Installation
 
 Set up a python environment and run
@@ -9,17 +5,19 @@ Set up a python environment and run
 
 # Usage 
 
-## Translation 
+## Translation and intervention
 
-`papermill Translation.ipynb out.ipynb -p input_lang fr -p target_lang zh`
+`python3 main_rejection_experiment.py --model_name meta-llama/Llama-2-7b-hf`
 
-## Cloze
+Will save results in `out_iclr` folder. 
 
-`papermill Cloze.ipynb out.ipynb -p target_lang fr`
+## Plotting
 
-# Precomputed latents
+`python plot_rejection_experiment.py --model_name meta-llama/Llama-2-7b-hf`
 
-For your convenience, we also provide some precomputed latents on [huggingface.](https://huggingface.co/datasets/wendlerc/llm-latent-language) Here are some [preliminary steering experiments](https://colab.research.google.com/drive/1EhCk3_CZ_nSfxxpaDrjTvM-0oHfN9m2n?usp=sharing) using the precomputed latents.
+* Plots the probability assigned to target word during translation from source word, for each pair of languages.
+* Plots the probability assigned to target word during translation from source word, if we intervene and project out unembedding vectors for *the correct* word in the latent language.
+* Plots the probability assigned to target word during translation from source word, if we intervene and project out unembedding vectors for *a random* word in the latent language, and the correct word in the target language.
 
 # Acknowledgements
 
