@@ -35,7 +35,7 @@ class Config:
     src_lang: str = 'fr'
     dest_lang: str = 'zh'
     latent_lang: str = 'en'
-    model_name: str = 'meta-llama/Llama-2-13b-hf'
+    model_name: str = 'meta-llama/Llama-2-7b-hf'
     # single_token_only: bool = False
     # multi_token_only: bool = False
     # out_dir: str = './visuals'

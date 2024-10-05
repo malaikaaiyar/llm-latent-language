@@ -48,6 +48,7 @@ class Config:
     token_add_leading_byte: bool = True
     token_add_prefixes : bool = False
     token_add_capitalization : bool = True
+    quantize: Optional[str] = None
     word_list_key : str = 'claude'
     src_lang : str = None
     dest_lang : str = None
@@ -66,6 +67,7 @@ if 'LOAD_MODEL' not in globals():
     model = HookedTransformer.from_pretrained_no_processing(cfg.model_name,
                                                             device=device,
                                                             dtype = torch.float16)
+
     tokenizer = model.tokenizer
     tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore
     LOAD_MODEL = False    
