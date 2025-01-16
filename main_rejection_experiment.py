@@ -1,11 +1,12 @@
 # %%
+
 # %load_ext autoreload
 # %autoreload 2
 # %%
 from imports import *
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # ==== Custom Libraries ====
-from src.prompt import gen_prompt, gen_common_suffixes, find_all_tokens
+from src.prompt import gen_prompt, gen_prompt_repeats, gen_common_suffixes, gen_common_suffixes_repeats, find_all_tokens
 from src.kv_cache import gen_kv_cache, run_with_kv_cache
 from src.intervention import Intervention
 from src.constants import LANG2NAME, LANG_BANK
@@ -51,7 +52,7 @@ class Config:
     quantize: Optional[str] = None
     word_list_key : str = 'claude'
     src_lang : str = None
-    dest_lang : str = None
+    # dest_lang : str = None
     latent_lang : str = 'en'
 
 cfg = Config()
@@ -70,9 +71,9 @@ if 'LOAD_MODEL' not in globals():
 
     tokenizer = model.tokenizer
     tokenizer_vocab = model.tokenizer.get_vocab() # type: ignore
-    LOAD_MODEL = False    
+    LOAD_MODEL = False
 # %%
-df = pd.read_csv(cfg.dataset_path, delimiter = '\t') 
+df = pd.read_csv(cfg.dataset_path, delimiter = '\t')
 
 short_model_name = cfg.model_name.split("/")[-1]
 
@@ -98,7 +99,7 @@ def good_batched_multi_token_only_end(prompt = None,
     # kv_cache.freeze()
     
     latent_idx = id_bank[cfg.latent_lang]
-    dest_idx = id_bank[cfg.dest_lang]
+    # dest_idx = id_bank[cfg.dest_lang]
     src_idx = id_bank[cfg.src_lang]
     
     if use_alt_latent:
@@ -132,9 +133,9 @@ def good_batched_multi_token_only_end(prompt = None,
     logits_last = eindex(logits, suffix_toks.indices, "batch [batch] dmodel") # (batch, vocab)
     probs_last = torch.softmax(logits_last, dim=-1) # (batch, vocab)
     probs_last[:, model.tokenizer.unk_token_id] = 0 # zero out unk token
-    probs_dest = eindex(probs_last, dest_idx, "batch [batch num_correct]").cpu().sum(-1) 
+    probs_src = eindex(probs_last, src_idx, "batch [batch num_correct]").cpu().sum(-1) 
     probs_latent = eindex(probs_last, latent_idx, "batch [batch num_correct]").cpu().sum(-1)
-    return ci(probs_dest)
+    return ci(probs_src)
 
 def raw_good_batched_multi_token_only_end(prompt = None,
                                       model = None,
@@ -153,7 +154,7 @@ def raw_good_batched_multi_token_only_end(prompt = None,
     # kv_cache.freeze()
     
     latent_idx = id_bank[cfg.latent_lang]
-    dest_idx = id_bank[cfg.dest_lang]
+    # dest_idx = id_bank[cfg.dest_lang]
     src_idx = id_bank[cfg.src_lang]
     
     if use_alt_latent:
@@ -215,18 +216,14 @@ from itertools import permutations
 
 all_post_resid = [f'blocks.{i}.hook_resid_post' for i in range(model.cfg.n_layers)]
 id_bank = gen_lang_ids(df, model, ['en', 'zh', 'fr', 'es', 'de', 'ru'])
-combos_pairs = list(permutations(id_bank.keys(), 2))    
 
 results = {}
-runner = tqdm(combos_pairs)
-for (src_lang, dest_lang) in runner:
-    
-    cfg_ex = Config(src_lang = src_lang, dest_lang = dest_lang)
-    prompt = gen_prompt(src_lang=src_lang, dest_lang=dest_lang)
+for src_lang in id_bank.keys():
+    cfg_ex = Config(src_lang = src_lang)
+    prompt = gen_prompt_repeats(src_lang=src_lang, num_examples=5)
     src_words = df[cfg_ex.src_lang]
-    suffixes = gen_common_suffixes(src_words,
-                            src_lang = cfg_ex.src_lang,
-                            dest_lang = cfg_ex.dest_lang)
+    suffixes = gen_common_suffixes_repeats(src_words,
+                            src_lang = cfg_ex.src_lang)
     
     probs_per_layer = raw_good_batched_multi_token_only_end(prompt = prompt, 
                                         model = model, 
@@ -237,11 +234,11 @@ for (src_lang, dest_lang) in runner:
     probs_last = probs_per_layer[:, -1] #(batch, vocab)
     
     
-    probs_dest = eindex(probs_last, id_bank[dest_lang], "batch [batch num_correct]").cpu().sum(-1)
+    probs_dest = eindex(probs_last, id_bank[src_lang], "batch [batch num_correct]").cpu().sum(-1)
     avg_prob_dest, sem95_prob_dest = ci(probs_dest)
     
     for latent_lang in id_bank.keys():
-        if latent_lang == src_lang or latent_lang == dest_lang:
+        if latent_lang == src_lang:
             continue
         latent_idx = id_bank[latent_lang]
         #take latent over all layers!

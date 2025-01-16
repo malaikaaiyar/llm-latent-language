@@ -3,6 +3,7 @@ from .constants import LANG2NAME, LANG_BANK
 import torch
 from typing import List
 from collections import namedtuple
+import random
 
 def gen_prompt(src_words = None, 
                dest_words = None, 
@@ -42,10 +43,53 @@ def gen_prompt(src_words = None,
     for i in range(min(num_examples, len(src_words))):
         prompt += f'{LANG2NAME[src_lang]}: "{src_space}{src_words[i]}" - {LANG2NAME[dest_lang]}: "{dest_space}{dest_words[i]}"\n'
 
-    # Add the last example without the destination translation
+    # Add the last source language prefix
     prompt += f'{LANG2NAME[src_lang]}: "'
 
     return prompt
+# %%
+
+def gen_prompt_repeats(src_words = None, 
+               src_lang = None, 
+               num_examples= None):
+    """
+    Generate a prompt for translation tasks.
+
+    Args:
+        src_words (list): List of source language words/phrases.
+        dest_words (list): List of corresponding destination language words/phrases.
+        src_lang (str): Source language code (e.g., 'fr' for French).
+        dest_lang (str): Destination language code (e.g., 'zh' for Chinese).
+        num_examples (int): Number of examples to include in the prompt (default: 1).
+
+    Returns:
+        str: The generated prompt string.
+    """
+    assert src_lang is not None, "Source language must be provided"
+    
+    if src_words is None:
+        src_words = LANG_BANK[src_lang]
+
+    # Create a copy and shuffle
+    src_words = list(src_words)  # Make a copy to avoid modifying original
+    random.shuffle(src_words)
+
+    src_space = "" if src_lang == "zh" else " "
+
+    if num_examples is None:
+        num_examples = len(src_words)
+
+    prompt = ""
+    for i in range(min(num_examples, len(src_words)-1)):
+        prompt += f'{src_space}{src_words[i]}{src_space}{src_words[i]}\n'
+
+
+    return prompt
+
+def gen_common_suffixes_repeats(src_words, src_lang):
+    src_space = " " if src_lang != 'zh' else ""
+    return [f'{src_space}{src_words[i]}' for i in range(len(src_words))]
+
 # %%
 
 def gen_common_suffixes(src_words, 
@@ -68,7 +112,6 @@ def token_prefixes(token_str: str):
 
 def add_spaces(tokens):
     return ['▁' + t for t in tokens]        
-
 
 def unicode_leading_byte(token_str : str):
         """
